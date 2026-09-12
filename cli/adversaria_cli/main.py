@@ -110,7 +110,10 @@ def parser():
         ask.add_argument("question")
         ask.add_argument("--workspace")
         ask.add_argument(
-            "--web", action="store_true", help="Send this question to Exa for research"
+            "--web",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Force Exa lookup, or --no-web to disable it; outside questions search automatically",
         )
         add_model_options(ask)
     research = sub.add_parser("search", help="Search Exa and return cited source excerpts")
@@ -409,6 +412,7 @@ def execute(args, config, store, engine):
                 provider=args.provider,
                 model=args.model,
                 web=args.web,
+                on_status=lambda status: say(status, "dim") if status != "Thinking…" else None,
             )
         )
     elif cmd == "search":
@@ -552,12 +556,22 @@ class Shell:
         if question and self.ai:
             self.job(self.answer, question, turns, self.workspace, self.provider, self.model)
 
-    def answer(self, question, turns, workspace, provider, model, web=False):
+    def answer(self, question, turns, workspace, provider, model, web=None):
         # Each job owns its model client/usage, preventing shared receipts across jobs.
         engine = Engine(self.config, self.store)
         say(f"SUGGESTION · {question}", "cyan")
         model_notice(self.config, provider, model)
-        render_stream(engine.answer(question, workspace, turns, provider, model, web))
+        render_stream(
+            engine.answer(
+                question,
+                workspace,
+                turns,
+                provider,
+                model,
+                web,
+                on_status=lambda status: say(status, "dim") if status != "Thinking…" else None,
+            )
+        )
 
     def replay(self, file):
         path = Path(file).expanduser()

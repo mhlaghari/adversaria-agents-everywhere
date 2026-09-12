@@ -1,6 +1,19 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
-> **CURRENT — 2026-09-12 15:23 GST: founder authorized committing and pushing all
+> **CURRENT — 2026-09-12 15:32 GST: fixed the reported AI Tinkerers chat answer and
+> enabled automatic Exa lookup as requested. Installed CLI refreshed.**
+
+- Ordinary questions previously never called Exa, and common query words pulled
+  in unrelated Adversaria notes. Subject-aware retrieval and answer instructions
+  now preserve the requested topic. The exact question was verified live with
+  synthetic project notes and returns AI Tinkerers' official community sources.
+- Automatic external lookup is enabled in local CLI configuration. Exa receives
+  the question only. Meeting/personal questions use workspace context;
+  `ask --no-web QUESTION` skips lookup and `search QUERY` forces it.
+- Dashboard accepts plain questions and search overrides and shows Exa progress.
+  75 CLI tests, Ruff and whitespace checks pass. Existing sessions need reopening.
+
+> **PUBLISH CHECKPOINT — 2026-09-12 15:23 GST: founder authorized committing and pushing all
 > hackathon work to `origin/main`. This checkpoint supersedes the uncommitted,
 > missing-key and STT-blocker notes in the history below.**
 

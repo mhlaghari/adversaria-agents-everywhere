@@ -48,7 +48,7 @@ required. Select an action with arrow keys and Enter, click it, or use a shortcu
 | K | Add the speech provider's API key through a hidden prompt |
 | Tab | Switch between the menu and reading pane |
 | Q | Save an active recording and quit |
-| / | Type `ask QUESTION`, `search QUERY` (Exa), `approve c1`, or `dismiss c1` |
+| / | Type a question, `ask QUESTION`, `search QUERY` (Exa), `approve c1`, or `dismiss c1` |
 | : | Open the command companion |
 
 The live transcript follows new captions unless you scroll back. Use arrow keys,
@@ -61,7 +61,14 @@ speech turn contains a question; a timed fragment ending in `?` triggers immedia
 press `/` and type `approve c1` or `dismiss c1`. Approval queues a workspace task;
 run it from the command companion with `work`. Press `/` and type `ask QUESTION`
 for an on-demand suggestion grounded in recent speech and workspace evidence.
-`search QUERY` uses your Exa key and streams an OpenRouter answer with source evidence.
+You can also type a question directly, such as `What is AI Tinkerers?`.
+Outside questions automatically use Exa when relevant local evidence is missing
+or the question asks for current information. The pane shows **Exa search** and
+retains the returned source links. Questions about your own meetings, notes or
+workspace stay with local evidence. Exa receives only the question, not the
+meeting transcript or attachments. `search QUERY` or `ask --web QUESTION` forces
+a lookup; `ask --no-web QUESTION` skips it. Set `auto_web` to `false` in the CLI
+configuration to disable automatic lookup globally.
 Dashboard Copilot uses OpenRouter and the `copilot_model` configuration setting
 (default `google/gemini-2.5-flash-lite`), independently of the task engine.
 
@@ -102,7 +109,8 @@ marks the task done; it does not publish or send anything.
 Questions in completed speech turns generate suggestions automatically. `copilot
 off` disables model suggestions while retaining transcription and commitment
 detection. `ask "What should I say?"` includes the recent conversation and matching
-workspace evidence. `ask "Latest developments?" --web` adds Exa results.
+workspace evidence. Outside questions can search automatically.
+`ask "Latest developments?" --web` forces Exa lookup and `--no-web` disables it.
 
 Use `devices` to list inputs. For both sides of a call, route the call's output to
 a loopback input such as BlackHole, then `record --device MIC_ID --system-device
@@ -220,7 +228,8 @@ SQLCipher database.** Export desktop notes as Markdown and attach them if needed
 
 This is a cloud hackathon edition: audio goes to the selected speech provider;
 questions, selected evidence and task briefs go to the chosen model provider;
-explicit research queries go to Exa. The desktop's local-only privacy promises
+automatic outside-information questions and explicit research queries go to Exa.
+The desktop's local-only privacy promises
 do not describe this edition. CLI storage is plaintext with restrictive POSIX
 directory/file permissions, not SQLCipher or an encrypted recording spool.
 Windows permissions follow the user's filesystem ACLs.

@@ -32,7 +32,7 @@ from prompt_toolkit.widgets import Frame, TextArea
 
 from .audio import Recorder, devices
 from .config import CliError
-from .copilot import Copilot
+from .copilot import QUESTION, Copilot
 from .engine import Engine
 from .transcription import speech_key
 from .ui import safe
@@ -162,7 +162,7 @@ class Dashboard:
         self.assistant_future = None
         self.pending_question = None
         self.suggestions = TextArea(
-            text="OpenRouter Copilot is on. Ask aloud, or / then ask QUESTION. Use search QUERY for Exa-backed answers.",
+            text="Ask aloud or type a question. Exa looks up outside information automatically. Use search QUERY to force a lookup, or ask --no-web QUESTION to skip it.",
             read_only=True,
             scrollbar=True,
         )
@@ -622,7 +622,7 @@ class Dashboard:
             ),
         )
 
-    def ask(self, question, web=False):
+    def ask(self, question, web=None):
         if self.assistant_future is not None and not self.assistant_future.done():
             self.pending_question = (question, web)
             self.set_status("Copilot is answering; the newest question is queued.")
@@ -641,6 +641,9 @@ class Dashboard:
                     provider="openrouter",
                     model=self.config.values.get("copilot_model", "google/gemini-2.5-flash-lite"),
                     web=web,
+                    on_status=lambda status: self.events.put(
+                        ("answer_status", generation, (question, status))
+                    ),
                 )
                 for token in tokens:
                     if generation != self.generation:
@@ -658,7 +661,16 @@ class Dashboard:
         command, _, value = buffer.text.strip().partition(" ")
         try:
             if command in {"ask", "search"} and value:
-                self.ask(value, web=command == "search")
+                web = True if command == "search" else None
+                if command == "ask":
+                    for flag, enabled in (("--no-web", False), ("--web", True)):
+                        if value.startswith(flag + " "):
+                            value, web = value[len(flag) :].strip(), enabled
+                            break
+                        if value.endswith(" " + flag):
+                            value, web = value[: -len(flag)].strip(), enabled
+                            break
+                self.ask(value, web=web)
             elif command in {"approve", "dismiss"}:
                 caught = self.copilot.commitments.get(value.strip())
                 if not caught or caught.status != "caught":
@@ -679,8 +691,14 @@ class Dashboard:
                         f"Task {caught.task_id} queued. Use Command shell → work to run it."
                     )
                 self.refresh_commitments()
+            elif command and (
+                QUESTION.match(buffer.text.strip()) or buffer.text.rstrip().endswith("?")
+            ):
+                self.ask(buffer.text.strip())
             elif command:
-                raise CliError("Use ask QUESTION, search QUERY (Exa), approve c1, or dismiss c1.")
+                raise CliError(
+                    "Type a question, or use ask QUESTION, search QUERY, approve c1, or dismiss c1."
+                )
         except (CliError, OSError, ValueError) as exc:
             self.set_status(str(exc), error=True)
         self.focus_reader()
@@ -705,8 +723,14 @@ class Dashboard:
             elif kind == "answer_start" and source == self.generation:
                 self.set_panel(self.suggestions, text + "\n\nThinking…")
             elif kind == "answer_token" and source == self.generation:
-                current = self.suggestions.text.replace("Thinking…", "")
+                current = self.suggestions.text.replace("Thinking…", "").replace(
+                    "Searching Exa…", ""
+                )
                 self.set_panel(self.suggestions, current + text)
+            elif kind == "answer_status" and source == self.generation:
+                question, status = text
+                prefix = "Exa search · " if status == "Searching Exa…" else ""
+                self.set_panel(self.suggestions, prefix + question + "\n\n" + status)
             elif kind == "answer_error" and source == self.generation:
                 self.set_panel(self.suggestions, "Copilot: " + text)
             elif kind == "notice":

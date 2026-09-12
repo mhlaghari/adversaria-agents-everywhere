@@ -49,6 +49,7 @@ class Config:
             "transcription_model": "gpt-transcribe",
             "live_model": "gpt-live-transcribe",
             "workspace": "Live meetings",
+            "auto_web": True,
         }
         if self.path.exists():
             try:

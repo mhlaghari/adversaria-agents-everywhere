@@ -6,6 +6,7 @@ from pathlib import Path
 from .config import CliError, atomic_text
 from .models import Models
 from .research import search, source_context
+from .store import query_terms
 from .transcription import transcribe_file
 
 GROUNDING = """You are Adversaria, a meeting and workspace assistant. Use the supplied evidence.
@@ -19,6 +20,34 @@ INSTRUCTIONS = {
     "visualize": "Produce a Markdown architecture document with a readable Mermaid flowchart in a ```mermaid fenced block, at most eight nodes, followed by an explanation of the components and connections. Do not output HTML or executable code.",
     "present": "Produce a complete slide deck in Markdown: one slide per section, separated by ---; give each slide a title and concise content, with speaker notes as appropriate.",
 }
+
+# Personal/meeting questions need workspace evidence, not a public search fallback.
+LOCAL_QUESTION = re.compile(
+    r"\b(?:i|me|my|mine|we|our|ours|us|you|your|this|that|these|those|it|they|them|"
+    r"meeting|meetings|transcript|transcripts|notes|attachment|attachments|"
+    r"workspace|workspaces|document|documents)\b",
+    re.IGNORECASE,
+)
+CURRENT_QUESTION = re.compile(
+    r"\b(?:latest|current|currently|today|recent|recently|news|price|pricing)\b", re.IGNORECASE
+)
+
+
+def needs_web(question, context):
+    """Search external questions with missing or potentially stale local evidence."""
+    # Strip polite lead-ins before checking pronouns: "can you tell me about ..."
+    # is an external question, while "what did we decide ..." is personal context.
+    subject = re.sub(
+        r"^(?:(?:can|could|would) you )?(?:please )?(?:tell me about|explain|describe)\s+",
+        "",
+        question.strip(),
+        flags=re.IGNORECASE,
+    )
+    return bool(
+        query_terms(subject)
+        and not LOCAL_QUESTION.search(subject)
+        and (not context or CURRENT_QUESTION.search(subject))
+    )
 
 
 class Engine:
@@ -64,10 +93,32 @@ class Engine:
             yield token
         return "".join(parts)
 
-    def answer(self, question, workspace=None, turns=None, provider=None, model=None, web=False):
+    def answer(
+        self,
+        question,
+        workspace=None,
+        turns=None,
+        provider=None,
+        model=None,
+        web=None,
+        on_status=None,
+    ):
         ws = self.workspace(workspace)
         context = self.store.context(ws["id"], question)
-        sources = search(self.config, question) if web else []
+        use_web = web is True or (
+            web is None
+            and self.config.values.get("auto_web", True)
+            and needs_web(question, context)
+        )
+        if use_web and web is None and not self.config.key("exa"):
+            raise CliError(
+                "This question needs web evidence, but Exa has no key. Run adversaria auth exa, "
+                "or use ask --no-web QUESTION for an answer without web lookup."
+            )
+        if on_status:
+            on_status("Searching Exa…" if use_web else "Thinking…")
+        # Exa receives the question only. Meeting turns and attachments stay out of the search.
+        sources = search(self.config, question) if use_web else []
         prompt = (
             f"Workspace instructions: {ws['instructions']}\nQuestion: {question}\n"
             f"Recent conversation:\n"
@@ -76,7 +127,16 @@ class Engine:
         )
         yield from self.models.generate(
             GROUNDING
-            + "\nGive 1-3 short sentences the user can say aloud. No headings or bullet lists. Cite only URLs supplied in the evidence; when no sources are supplied, omit citations entirely. Distinguish general knowledge from facts about this meeting.",
+            + "\nAnswer the latest question about the exact person, organization or concept named. "
+            "A newly named subject overrides the subject of earlier conversation. "
+            "Use local evidence only when it is relevant to that subject. Never replace an "
+            "unanswered question with a description of the workspace, its owner or another project. "
+            "For general questions, you may use general knowledge, clearly distinguishing it "
+            "from meeting facts and verified web evidence. If you cannot answer reliably, "
+            "say what is missing and suggest an Exa search instead of guessing. "
+            "Give 1-3 short sentences the user can say aloud. No headings or bullet lists. "
+            "Cite only URLs supplied in the evidence; when no sources are supplied, omit "
+            "citations entirely.",
             prompt,
             provider,
             model,

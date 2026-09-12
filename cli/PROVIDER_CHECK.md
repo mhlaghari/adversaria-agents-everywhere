@@ -3,6 +3,21 @@
 Validation used the user's configured keys without displaying or copying them
 into this repository. Requests contained synthetic speech or public test queries.
 
+## Automatic question lookup
+
+The reported question `What is AI Tinkerers?` was reproduced with synthetic
+Adversaria workspace notes. Previously, common question words retrieved an
+unrelated project paragraph, and ordinary chat never searched Exa. The model
+responded with missing-information text followed by Hamza's project description.
+
+After the fix, the same question excludes the unrelated paragraph, automatically
+searches Exa, and answers that AI Tinkerers is a community for AI builders, citing
+`https://aitinkerers.org/` and its official FAQ/about pages. Only the question was
+sent to Exa. The fixture retained a prior turn about Adversaria to verify the
+topic change. This was a live text/provider check, not a microphone rehearsal.
+
+## Earlier provider checks
+
 | Check | Result |
 | --- | --- |
 | OpenRouter current-key endpoint | HTTP 200, paid account |

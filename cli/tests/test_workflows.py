@@ -327,3 +327,147 @@ def test_search_answer_retains_exa_source_urls(env, monkeypatch):
     )
     answer = "".join(engine.answer("How does ASR work?", web=True))
     assert "[1] Speech docs — https://openrouter.ai/docs/guides/overview/multimodal/stt" in answer
+
+
+@pytest.mark.parametrize("question", ["What is AI Tinkerers?", "what is ai tinkerers"])
+def test_question_about_another_organization_does_not_retrieve_hamzas_project(env, question):
+    _, store, engine = env
+    workspace = engine.workspace()
+    store.meeting(
+        workspace["id"],
+        "Adversaria",
+        "Here is what Hamza is building. Adversaria is Hamza's AI project at Laghari Labs.",
+    )
+    assert store.context(workspace["id"], question) == ""
+    assert "Hamza" in store.context(workspace["id"], "What is Adversaria?")
+
+
+@pytest.mark.parametrize("name", ["AI Tinkerers", "AITinkerers"])
+def test_retrieval_keeps_the_named_organization_and_workspace_scope(env, name):
+    _, store, engine = env
+    workspace = engine.workspace()
+    store.meeting(workspace["id"], "Community", f"{name} hosts demos for AI builders.")
+    store.meeting(workspace["id"], "Project", "What I built: an AI meeting assistant.")
+    other = store.workspace("Unrelated workspace")
+    store.meeting(other["id"], "Private", "AI Tinkerers confidential planning notes.")
+    context = store.context(workspace["id"], "What is AI Tinkerers?")
+    assert "hosts demos" in context
+    assert "meeting assistant" not in context
+    assert "confidential" not in context
+
+
+def test_explicit_no_web_answer_never_searches(env, monkeypatch):
+    _, store, engine = env
+    store.meeting(engine.workspace()["id"], "Project", "What Hamza built: an AI assistant.")
+    monkeypatch.setattr(
+        "adversaria_cli.engine.search", lambda *args: pytest.fail("Unexpected web search")
+    )
+    prompts = []
+
+    def generate(system, prompt, *args):
+        prompts.append(prompt)
+        yield "AI Tinkerers is a community for people building with AI."
+
+    monkeypatch.setattr(engine.models, "generate", generate)
+    answer = "".join(engine.answer("What is AI Tinkerers?", web=False))
+    assert "community" in answer
+    assert "What is AI Tinkerers?" in prompts[0]
+    assert "What Hamza built" not in prompts[0]
+
+
+def test_external_question_searches_exa_without_sending_meeting_context(env, monkeypatch):
+    config, store, engine = env
+    config.save_key("exa", "synthetic-exa-key")
+    ws = engine.workspace()
+    store.meeting(ws["id"], "Project", "What Hamza built: an AI assistant.")
+    queries, statuses = [], []
+
+    def search(config, question):
+        queries.append(question)
+        return [
+            {
+                "title": "AI Tinkerers",
+                "url": "https://aitinkerers.org",
+                "text": "A community for AI builders.",
+            }
+        ]
+
+    def generate(system, prompt, *args):
+        assert "A community for AI builders" in prompt
+        assert "What Hamza built" not in prompt
+        yield "AI Tinkerers is a community for AI builders."
+
+    monkeypatch.setattr("adversaria_cli.engine.search", search)
+    monkeypatch.setattr(engine.models, "generate", generate)
+    answer = "".join(
+        engine.answer(
+            "What is AI Tinkerers?",
+            turns=["Me: Private client discussion."],
+            on_status=statuses.append,
+        )
+    )
+    assert queries == ["What is AI Tinkerers?"]
+    assert statuses == ["Searching Exa…"]
+    assert "https://aitinkerers.org" in answer
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What did we decide about AI Tinkerers?",
+        "What is my project?",
+        "What should I say next?",
+        "Who is in our meeting?",
+    ],
+)
+def test_personal_and_meeting_questions_do_not_automatically_search(env, monkeypatch, question):
+    config, _, engine = env
+    config.save_key("exa", "synthetic-exa-key")
+    monkeypatch.setattr(
+        "adversaria_cli.engine.search", lambda *args: pytest.fail("Private query sent to Exa")
+    )
+    monkeypatch.setattr(
+        engine.models, "generate", lambda *args: iter(["I need the meeting context."])
+    )
+    assert "meeting context" in "".join(engine.answer(question))
+
+
+def test_relevant_local_evidence_avoids_unnecessary_web_search(env, monkeypatch):
+    config, store, engine = env
+    config.save_key("exa", "synthetic-exa-key")
+    store.meeting(
+        engine.workspace()["id"], "Community", "AI Tinkerers hosts demos for AI builders."
+    )
+    monkeypatch.setattr(
+        "adversaria_cli.engine.search", lambda *args: pytest.fail("Unnecessary search")
+    )
+    monkeypatch.setattr(
+        engine.models, "generate", lambda *args: iter(["AI Tinkerers hosts demos."])
+    )
+    assert "hosts demos" in "".join(engine.answer("What is AI Tinkerers?"))
+
+
+def test_current_external_question_refreshes_local_evidence(env, monkeypatch):
+    config, store, engine = env
+    config.save_key("exa", "synthetic-exa-key")
+    store.meeting(engine.workspace()["id"], "Community", "AI Tinkerers events from 2024.")
+    queries = []
+    monkeypatch.setattr(
+        "adversaria_cli.engine.search", lambda config, question: queries.append(question) or []
+    )
+    monkeypatch.setattr(engine.models, "generate", lambda *args: iter(["No current events found."]))
+    list(engine.answer("What are the latest AI Tinkerers events?"))
+    assert queries == ["What are the latest AI Tinkerers events?"]
+
+
+def test_missing_auto_search_key_is_actionable_and_does_not_guess(env, monkeypatch):
+    _, _, engine = env
+    monkeypatch.setattr(engine.models, "generate", lambda *args: pytest.fail("Should not guess"))
+    with pytest.raises(CliError, match="Exa has no key"):
+        list(engine.answer("What is AI Tinkerers?"))
+
+
+def test_ask_web_flags_preserve_auto_default():
+    assert parser().parse_args(["ask", "What is AI Tinkerers?"]).web is None
+    assert parser().parse_args(["ask", "--web", "What is AI Tinkerers?"]).web is True
+    assert parser().parse_args(["ask", "--no-web", "What is AI Tinkerers?"]).web is False

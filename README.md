@@ -105,7 +105,7 @@ A microphone-free detector rehearsal is also available:
 | Component | Role |
 | --- | --- |
 | OpenRouter | Cloud speech transcription and streaming model answers |
-| Exa | Explicit web research for questions and tasks using `--web` |
+| Exa | Automatic lookup for outside questions; explicit `search` / `--web` for research tasks |
 | Codex | Optional task engine using an existing Codex login |
 | SQLite + workspace files | Meeting history, source evidence, queued tasks and artifacts |
 | prompt_toolkit | Boxed terminal dashboard, keyboard navigation and live panes |

@@ -380,3 +380,56 @@ def test_dashboard_search_uses_exa_and_openrouter_even_if_task_provider_differs(
     assert calls[0][1]["web"] is True
     assert calls[0][1]["provider"] == "openrouter"
     assert "Grounded search answer" in ui.suggestions.text
+
+
+def test_typed_question_automatically_searches_and_displays_sources(dashboard, monkeypatch):
+    from prompt_toolkit.buffer import Buffer
+    from prompt_toolkit.document import Document
+
+    ui, _ = dashboard
+    ui.config.save_key("exa", "synthetic-exa-key")
+    ui.store.meeting(ui.workspace["id"], "Project", "What Hamza built: an AI assistant.")
+    queries = []
+
+    def search(config, question):
+        queries.append(question)
+        return [
+            {
+                "title": "AI Tinkerers",
+                "url": "https://aitinkerers.org",
+                "text": "A builder community.",
+            }
+        ]
+
+    monkeypatch.setattr("adversaria_cli.engine.search", search)
+    monkeypatch.setattr(
+        "adversaria_cli.models.Models.generate",
+        lambda *args, **kwargs: iter(["AI Tinkerers is a builder community."]),
+    )
+    ui.submit_command(Buffer(document=Document("What is AI Tinkerers?")))
+    ui.assistant_worker.shutdown(wait=True)
+    ui.drain_events()
+    assert queries == ["What is AI Tinkerers?"]
+    assert "Exa search · What is AI Tinkerers?" in ui.suggestions.text
+    assert "builder community" in ui.suggestions.text
+    assert "https://aitinkerers.org" in ui.suggestions.text
+    assert "Thinking…" not in ui.suggestions.text
+    assert "Searching Exa…" not in ui.suggestions.text
+
+
+@pytest.mark.parametrize("flag, expected", [("--web", True), ("--no-web", False)])
+def test_dashboard_ask_accepts_search_override_flags(dashboard, monkeypatch, flag, expected):
+    from prompt_toolkit.buffer import Buffer
+    from prompt_toolkit.document import Document
+
+    ui, _ = dashboard
+    calls = []
+
+    def answer(self, question, workspace=None, turns=None, **kwargs):
+        calls.append((question, kwargs["web"]))
+        yield "Answer"
+
+    monkeypatch.setattr("adversaria_cli.dashboard.Engine.answer", answer)
+    ui.submit_command(Buffer(document=Document(f"ask {flag} What is AI Tinkerers?")))
+    ui.assistant_worker.shutdown(wait=True)
+    assert calls == [("What is AI Tinkerers?", expected)]

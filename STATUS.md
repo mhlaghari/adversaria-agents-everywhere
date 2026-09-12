@@ -1,6 +1,17 @@
 # STATUS (hackathon repo)
 
-> **Current — 2026-09-12 15:23 GST: owner authorized committing and pushing the
+> **Current — 2026-09-12 15:32 GST: automatic Exa lookup enabled at the owner's
+> request. The AI Tinkerers question now returns the community's description
+> with official sources, instead of Hamza's project description.**
+
+CLI retrieval now ignores question filler and requires subject relevance.
+Outside questions search when evidence is missing or current facts are needed;
+`--no-web` disables lookup. The dashboard accepts plain questions and shows
+search progress/sources. All 75 CLI tests, Ruff and whitespace checks pass.
+The installed `adversaria` command was refreshed; existing sessions need reopening.
+Live text regression evidence is in [cli/PROVIDER_CHECK.md](cli/PROVIDER_CHECK.md).
+
+> **Publish checkpoint — 2026-09-12 15:23 GST: owner authorized committing and pushing the
 > complete hackathon work to `origin/main`. Copilot/Workspaces improvements, the
 > CLI, README attribution/banner and the eight-slide Laghari Labs deck are ready.**
 

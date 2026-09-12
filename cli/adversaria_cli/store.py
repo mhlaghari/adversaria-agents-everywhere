@@ -11,6 +11,84 @@ from pathlib import Path
 
 from .config import CliError, private_dir
 
+QUERY_STOP_WORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "but",
+        "by",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "for",
+        "from",
+        "had",
+        "has",
+        "have",
+        "how",
+        "i",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "our",
+        "please",
+        "should",
+        "tell",
+        "that",
+        "the",
+        "their",
+        "them",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "to",
+        "us",
+        "was",
+        "we",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+        "will",
+        "with",
+        "would",
+        "you",
+        "your",
+        "about",
+        "explain",
+        "describe",
+        "give",
+        "say",
+        "next",
+    ]
+)
+
+
+def query_terms(query):
+    """Keep subject terms, including short names such as AI, rather than question filler."""
+    return [word for word in re.findall(r"\w{2,}", query.lower()) if word not in QUERY_STOP_WORDS]
+
 
 def now():
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -124,13 +202,21 @@ class Store:
                 "SELECT title,transcript,'meeting:'||id FROM meetings WHERE workspace_id=?",
                 (workspace_id, workspace_id),
             )
-            words = set(re.findall(r"\w{3,}", query.lower()))
+            terms = query_terms(query)
+            words = set(terms)
+            if not words:
+                return ""
             candidates = []
             for title, text, origin in records:
                 for start in range(0, len(text), 1200):
                     chunk = text[start : start + 1600]
-                    score = len(words & set(re.findall(r"\w{3,}", chunk.lower())))
-                    if score:
+                    tokens = set(re.findall(r"\w{2,}", (title + " " + chunk).lower()))
+                    score = len(words & tokens)
+                    # A shared "AI" or "project" alone must not redirect a question
+                    # about another subject. Also recognize names written as one word.
+                    if len(terms) > 1 and "".join(terms) in tokens:
+                        score = len(words)
+                    if score >= min(2, len(words)):
                         candidates.append((score, f"Source: {title} ({origin})\n{chunk}"))
             candidates.sort(key=lambda r: r[0], reverse=True)
             return "\n\n".join(text for _, text in candidates[:10])[:limit]
