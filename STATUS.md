@@ -1,5 +1,15 @@
 # STATUS (hackathon repo)
 
+> **Current presentation — 2026-09-12 15:57 GST: the story is now four slides.
+> Approved opening retained; remaining copy shortened in the same brand design.**
+
+| Presentation work | Status | Next step |
+| --- | --- | --- |
+| Four-slide Adversaria story | Ready; checked | [PDF](marketing/adversaria-story/output/adversaria-story.pdf), [PowerPoint](marketing/adversaria-story/output/adversaria-story-short.pptx), [HTML](marketing/adversaria-story/output/adversaria-story.html); four-slide/page and visual checks passed; present |
+| Standalone pain-point slide | Preserved | Also included unchanged as slide 1 of the short story |
+| Original eight-slide PowerPoint | Archived backup | Current story PDF/HTML now select four slides |
+| Demo | Next | Rehearse the short story, then live demo before 16:30 GST |
+
 > **Current — 2026-09-12 15:50 GST: one-slide presentation delivered in chat and
 > pushed as `71a6d7a`. README links select the concise version.
 > Latest founder deadline: 16:30 GST.**

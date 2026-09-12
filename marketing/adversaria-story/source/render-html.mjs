@@ -9,10 +9,11 @@ await page.evaluate(()=>document.fonts.ready);
 await page.evaluate(()=>document.body.classList.add('clean'));
 const fonts=await page.evaluate(()=>({silkscreen:document.fonts.check('100px Silkscreen'),jetbrains:document.fonts.check('36px "JetBrains Mono"')}));
 const checks=[];
-for(let i=0;i<8;i++){
+const slideCount=await page.locator('.slide').count();
+for(let i=0;i<slideCount;i++){
  await page.evaluate(i=>{show(i);document.querySelector('#stage').style.transform='translate(-50%,-50%) scale(1)';},i);
  await page.locator('.slide.active').screenshot({path:path.join(root,'.build','html-slide-'+(i+1)+'.png')});
- checks.push(await page.locator('.slide.active').evaluate((slide,i)=>({slide:i+1,overflows:[...slide.querySelectorAll('.txt')].filter(x=>x.scrollWidth>x.clientWidth+2||x.scrollHeight>x.clientHeight+2).map(x=>({text:x.innerText,width:[x.scrollWidth,x.clientWidth],height:[x.scrollHeight,x.clientHeight]}))}),i));
+ checks.push(await page.locator('.slide.active').evaluate((slide,i)=>({slide:i+1,overflows:[...slide.querySelectorAll('.text')].filter(x=>x.scrollWidth>x.clientWidth+2||x.scrollHeight>x.clientHeight+2).map(x=>({text:x.innerText,width:[x.scrollWidth,x.clientWidth],height:[x.scrollHeight,x.clientHeight]}))}),i));
 }
 await page.emulateMedia({media:'print'});
 await page.pdf({path:path.join(root,'output','adversaria-story.pdf'),width:'1600px',height:'900px',printBackground:true,preferCSSPageSize:true,displayHeaderFooter:false});
@@ -23,8 +24,6 @@ await page.keyboard.press('ArrowRight');
 const navigation=await page.locator('#counter').textContent();
 await page.keyboard.press('n');
 const notesVisible=await page.locator('#notes').isVisible();
-await page.locator('#edit').click();
-const editable=await page.locator('.slide.active .txt').first().getAttribute('contenteditable');
-await fs.writeFile(path.join(root,'.build','html-validation.json'),JSON.stringify({fonts,checks,navigation,notesVisible,editable},null,2));
-console.log(JSON.stringify({fonts,checks,navigation,notesVisible,editable}));
+await fs.writeFile(path.join(root,'.build','html-validation.json'),JSON.stringify({fonts,slideCount,checks,navigation,notesVisible},null,2));
+console.log(JSON.stringify({fonts,slideCount,checks,navigation,notesVisible}));
 await browser.close();

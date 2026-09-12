@@ -1,5 +1,25 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
+> **CURRENT PRESENTATION — 2026-09-12 15:57 GST: Adversaria story reduced to
+> four slides, starting with the approved pain-point slide unchanged.**
+
+- Current story: [PDF](marketing/adversaria-story/output/adversaria-story.pdf),
+  [editable PowerPoint](marketing/adversaria-story/output/adversaria-story-short.pptx)
+  and [offline HTML](marketing/adversaria-story/output/adversaria-story.html).
+  The original story PDF/HTML links now open the shorter presentation.
+- Four ideas: the personal pain, local notes and live Copilot suggestions,
+  workspace research/architecture drafts, and today's desktop extension plus
+  the Codex-built CLI with OpenRouter and Exa AI sponsor credits. Detailed
+  explanation stays in speaker notes. The standalone pain-point slide remains.
+- Validation: exactly four slides/pages; native PowerPoint text and brand fonts
+  passed package/layout/import checks. All final slides were rendered and
+  visually reviewed. The approved opening render is byte-identical to its
+  standalone version. Browser fonts, navigation and notes passed, with no text
+  overflow on any slide.
+- Next: present the four-slide story, then demonstrate the workflow. The latest
+  stated deadline remains **16:30 GST**. The CLI checkpoint below is separate
+  work and is preserved for its owner to publish.
+
 > **CURRENT — 2026-09-12 15:50 GST: one-slide presentation delivered and pushed
 > to `origin/main` as `71a6d7a`; README links select it by default.**
 
