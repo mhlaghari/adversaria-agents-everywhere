@@ -3,7 +3,7 @@ name = "adversaria-cli"
 version = "0.1.0"
 description = "Adversaria in your terminal: listen, remember, research, and do the work."
 requires-python = ">=3.11"
-dependencies = ["httpx>=0.28,<1", "rich>=13,<15", "prompt-toolkit>=3.0,<4", "sounddevice>=0.5,<1", "websockets>=15,<18", "audioop-lts>=0.2; python_version >= '3.13'"]
+dependencies = ["httpx>=0.28,<1", "rich>=13,<15", "markdown-it-py>=3,<5", "prompt-toolkit>=3.0,<4", "sounddevice>=0.5,<1", "websockets>=15,<18", "audioop-lts>=0.2; python_version >= '3.13'"]
 
 [project.scripts]
 adversaria = "adversaria_cli.main:main"

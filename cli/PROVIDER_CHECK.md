@@ -16,7 +16,24 @@ searches Exa, and answers that AI Tinkerers is a community for AI builders, citi
 sent to Exa. The fixture retained a prior turn about Adversaria to verify the
 topic change. This was a live text/provider check, not a microphone rehearsal.
 
-## Earlier provider checks
+## Workspace dashboard checks
+
+The new workspace UI was exercised with isolated synthetic context and the
+configured provider keys. No real meeting content was used.
+
+| Workflow | Result | Elapsed |
+| --- | --- | --- |
+| Writing task → OpenRouter → saved Markdown draft | Awaiting review, then approved locally | 2.37 seconds |
+| Research task → Exa → OpenRouter → draft with source links | Awaiting review, then approved locally | 4.07 seconds |
+
+These timings cover one complete run each, not first-token latency or a speed
+guarantee. Automated tests also cover workspace isolation, recording during task
+generation, revision feedback and retained earlier artifacts, pause/resume,
+explicit artifact review, and cancellation before quitting. Wide and compact
+terminal layouts were rehearsed in an isolated tmux session with labeled
+simulated data.
+
+## Speech and Copilot provider checks
 
 | Check | Result |
 | --- | --- |

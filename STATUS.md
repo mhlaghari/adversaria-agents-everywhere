@@ -1,5 +1,42 @@
 # STATUS (hackathon repo)
 
+> **Coordinated publish checkpoint — 2026-09-12: all remaining CLI work is
+> included in this commit for the authorized push; older uncommitted labels below are historical.**
+
+| Latest repository work | State |
+| --- | --- |
+| CLI workspace dashboard, task lifecycle and review | Included in coordinated checkpoint |
+| Labeled demo fixtures and reusable demo command | Included in coordinated checkpoint |
+| Offline Markdown/Mermaid preview and SVG download | Included, with renderer/license and tests |
+| CLI docs, submission scope, SPEC and STRATEGY | Updated together with implementation |
+| Fresh combined checks | 93 tests passed; Ruff lint/format and whitespace passed |
+| Slides, screenshot, sponsor credits and lagharilabs.com | Already pushed before this checkpoint |
+| Next | Verify remote commit and clean working tree after push; demo and submit separately |
+
+> **Current CLI diagram — 2026-09-12 16:19 GST: rendered task preview fixed,
+> verified and installed; task 5 diagram opened in the browser.**
+
+| Diagram work | Status | Next step |
+| --- | --- | --- |
+| Actual task 5 diagram | Rendered; eight nodes verified | Browser preview and SVG are saved beside artifacts/5/4/artifact.md; original approved fixture preserved |
+| O / Open preview and task preview command | Implemented; globally installed | Reopen dashboard for O, or run `adversaria task preview 5` immediately |
+| Offline HTML, Mermaid and SVG download | Passed | Standalone renderer made zero HTTP requests; download verified |
+| Preview validation | Passed; UI review ship | 93 tests, Ruff and whitespace checks; desktop/narrow browser checks; installed source/vendor hashes match |
+| Documentation and memory | Updated | README, CLI guide/design, HACKATHON, SPEC, STRATEGY, HANDOFF and STATUS reflect rendered preview |
+| Live rehearsal and coordinated submission | Next | Demonstrate rendered fixture, then a real task run; this fix is uncommitted and unsubmitted |
+
+> **Current CLI demo — 2026-09-12 16:07 GST: prepared examples loaded into
+> Interviews; press T to see them. Existing work and configuration preserved.**
+
+| Demo work | Status | Next step |
+| --- | --- | --- |
+| Task 6 README, 5 architecture, 4 research brief | Saved drafts; awaiting review | Enter reads; V approves; E requests revision |
+| Task 3 four-slide Markdown outline | Approved demo artifact | Open to show a completed task |
+| Task 2 judge follow-up | Queued | G starts an actual OpenRouter run |
+| Reusable sample loader | Implemented and installed | `adversaria demo`; repeat loads preserve edits and avoid duplicates |
+| Fixture validation | Passed | 89 CLI tests, Ruff and whitespace checks; five tasks/four outputs opened in Interviews; no seeding API calls |
+| Remaining rehearsal | Next | Clearly identify prepared fixtures, then demonstrate one real task run and microphone/loopback capture |
+
 > **Current presentation — 2026-09-12 16:01 GST: all current presentation
 > footers now say lagharilabs.com. Four-slide story and standalone exports refreshed.**
 
@@ -11,8 +48,9 @@
 | Original eight-slide PowerPoint | Archived backup | Current story PDF/HTML now select four slides |
 | Demo | Next | Rehearse the short story, then live demo before 16:30 GST |
 
-> **Current — 2026-09-12 15:50 GST: one-slide presentation delivered in chat and
-> pushed as `71a6d7a`. README links select the concise version.
+> **Current — 2026-09-12 15:52 GST: CLI workspace dashboard completed, verified
+> and installed locally; its extension is uncommitted. One-slide presentation
+> remains delivered and pushed as `71a6d7a`.
 > Latest founder deadline: 16:30 GST.**
 
 | Work | Status | Evidence / next step |
@@ -22,8 +60,12 @@
 | Automatic Exa and AI Tinkerers answer fix | Pushed and installed | `3b4df85`; 75 CLI tests and live synthetic/public regression checks passed |
 | One-sentence pain-point slide | Delivered and pushed | `71a6d7a`: "Every meeting adds hours of follow-up while my own projects wait." [PDF](marketing/adversaria-story/output/adversaria-one-slide.pdf), [PowerPoint](marketing/adversaria-story/output/adversaria-one-slide.pptx), [HTML](marketing/adversaria-story/output/adversaria-one-slide.html), PNG and speaker notes; one-slide/package/layout/import and visual checks passed |
 | Original Laghari Labs presentation | Backup | Eight reviewed slides retained in the presentation directory |
-| Separate CLI workspace dashboard changes | In progress; uncommitted and unverified here | Dashboard imports workspace/task navigation and background review controls; store revision method and dashboard tests added. Coordinate with owning worker, then verify before publishing |
-| Demo rehearsal and submission | Next | Rehearse against the latest stated 16:30 GST deadline; a repo push does not submit the entry |
+| CLI workspace navigation, context and task review | Done; installed; uncommitted | W/F/I/P/N/T/G/V/E/X workflow, OpenRouter task worker, optional Exa research, retained revision artifacts and safe cancellation |
+| CLI validation and provider rehearsal | Passed | 86 tests; Ruff lint/format and whitespace checks; real synthetic writing 2.37 s and Exa research 4.07 s, both reviewed locally |
+| Native terminal layout and dialogs | Ship; no open findings | 154×40, 90×32 and 80×24 captures; revision target guard; parent rendering suspended during dialogs; global installation matches source |
+| CLI submission documentation | Updated; uncommitted | Root/CLI README, HACKATHON, CLI design/provider notes, simulated workspace screenshot; SPEC/STRATEGY/memory refreshed |
+| Real microphone/loopback and Windows rehearsal | Pending | Save/quit existing session, reopen adversaria, rehearse workspace task generation while recording; synthetic/provider checks do not cover real audio routing |
+| Demo checkpoint and submission | Next | Coordinate remaining workspace diff with the published slide/README work; latest deadline 16:30 GST; no push or submission in this extension turn |
 
 > **Chat fix checkpoint — 2026-09-12 15:32 GST: automatic Exa lookup enabled at the owner's
 > request. The AI Tinkerers question now returns the community's description

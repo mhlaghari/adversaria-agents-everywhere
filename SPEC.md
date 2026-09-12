@@ -11,12 +11,41 @@ reads this first; keep it current. Strategy rationale: [docs/STRATEGY.md](./docs
 `cli/` provides a standalone terminal version of capture → suggestions → approved
 tasks → artifacts, using the hackathon's OpenRouter, Exa and Codex credits. Unlike
 the desktop local-first contract below, this explicitly selected edition defaults
-to cloud speech/LLMs through OpenRouter. Codex uses the installed CLI's login;
-Exa queries are explicit (`--web`/`search`). Direct OpenAI API is optional. No local
+to cloud speech/LLMs through OpenRouter. The command companion can use Codex's
+installed CLI login; dashboard tasks and Copilot use OpenRouter. Exa serves
+selected research tasks, explicit searches, and automatic outside-question
+lookup when relevant local evidence is missing or current information is needed.
+Meeting/personal questions use workspace evidence; `--no-web` skips lookup.
+Exa receives the question, not meeting turns or attachments. Direct OpenAI API is optional. No local
 model or Tauri/ML sidecar is required. Its own plaintext SQLite store is isolated
 from desktop SQLCipher data. It supports microphone plus optional loopback input;
 native desktop audio taps, diarization and desktop DB synchronization are outside
 this terminal implementation. Details and live verification limits: `cli/README.md`.
+
+The boxed dashboard includes workspace creation/switching, UTF-8 file attachments
+under 2 MB, shared instructions, task lists and task pause/resume. Write, Research,
+Visualize and Present tasks generate local Markdown; Visualize includes Mermaid
+source and Present includes slide sections/notes. Drafts stream independently of
+recording and Copilot, then await explicit artifact review. Revision feedback
+requeues the task and preserves earlier artifacts; approval marks local completion.
+Cancellation waits for the current network response, and incomplete cancelled
+output is not accepted as an artifact. Workspace switching requires capture to
+be saved first. Compact rendering supports 80×24 terminals; native dialogs take
+exclusive input/rendering while background work continues. These behaviors are
+implemented and covered by the 93-test CLI suite as of 2026-09-12.
+
+Saved task artifacts support **O / task preview ID** for a local HTML preview.
+Markdown is formatted and Mermaid fences become rendered diagrams with SVG
+download. Mermaid Tiny 12.0.0 is bundled, so previewing needs no external assets
+or provider requests. Source/config directives cannot override the viewer's
+strict rendering policy. Previewing preserves original artifacts and review state.
+
+`adversaria demo` adds five explicitly labeled prepared tasks and four saved
+outputs to the current workspace (or an explicit `--workspace` target), without
+API calls or recordings. Its fixtures include reviewable, approved and queued
+states; simulation provenance is retained in run metadata and output text.
+Repeated loading preserves edits and review decisions. Existing real tasks,
+workspace instructions and provider settings remain unchanged.
 
 ### Desktop commitment slice
 

@@ -42,6 +42,8 @@ def parser():
     sub.add_parser("shell", help="Command-based meeting companion")
     sub.add_parser("doctor", help="Check cloud configuration, credentials and devices")
     sub.add_parser("setup", help="Configure OpenRouter and Exa; use your installed Codex login")
+    demo = sub.add_parser("demo", help="Add prepared sample tasks and outputs; no provider calls")
+    demo.add_argument("--workspace", help="Target workspace; defaults to the current workspace")
     auth = sub.add_parser("auth", help="Save a key via a hidden prompt")
     auth.add_argument("provider", choices=("openai", "openrouter", "exa"))
     auth.add_argument(
@@ -132,13 +134,17 @@ def parser():
     ta.add_argument("--web", action="store_true", help="Use Exa when this task runs")
     ta.add_argument("--run", action="store_true")
     add_model_options(ta)
-    for name in ("show", "run", "approve", "revise", "artifact", "retry", "recover"):
+    for name in ("show", "run", "approve", "revise", "artifact", "preview", "retry", "recover"):
         child = ts.add_parser(name)
         child.add_argument("id", type=int)
         if name == "run":
             add_model_options(child)
         if name == "artifact":
             child.add_argument("--raw", action="store_true")
+        if name == "preview":
+            child.add_argument(
+                "--no-open", action="store_true", help="Save HTML without opening a browser"
+            )
     work = sub.add_parser("work", help="Run queued tasks in order (optionally stay watching)")
     work.add_argument("--workspace")
     work.add_argument("--watch", action="store_true")
@@ -262,6 +268,17 @@ def execute(args, config, store, engine):
         return 0
     if cmd == "doctor":
         return doctor(config)
+    if cmd == "demo":
+        from .demo import seed_demo
+
+        workspace, tasks = seed_demo(config, store, args.workspace)
+        say(f"Prepared demo fixtures in {workspace['name']}. No API calls were made.")
+        table(tasks, [("ID", "id"), ("Task", "title"), ("State", "status")])
+        say(
+            "Open the dashboard, select this workspace with W, and press T. "
+            "Enter reads a task; V approves; E revises. G starts a real provider run."
+        )
+        return 0
     if cmd == "auth":
         value = (
             sys.stdin.readline().strip()
@@ -458,6 +475,11 @@ def execute(args, config, store, engine):
             )
         elif action == "run":
             run_and_report(engine, args.id, args.provider, args.model)
+        elif action == "preview":
+            from .preview import open_preview
+
+            path = open_preview(store, args.id, launch=not args.no_open)
+            say(f"Local preview: {path}")
         elif action in {"approve", "revise"}:
             store.review(args.id, action == "approve")
             say(f"Task {args.id} · {'done' if action == 'approve' else 'queued for revision'}")

@@ -67,7 +67,8 @@ for OpenRouter and Exa keys. Windows: `.\adversaria.ps1 setup`, then
 `.\adversaria.ps1`. No desktop build or local model downloads are required.
 
 The full-screen interface has **boxed transcript, Copilot suggestions, and
-commitment panes**, plus a command bar. It runs in a normal terminal or inside
+commitment panes**, plus workspace browsing, task review, and a command bar.
+It runs in a normal terminal or inside
 tmux. Run `./adversaria tmux` to create or attach a persistent tmux session
 (detach with Ctrl-B then D). Use a wide terminal to see the action menu beside all three panes.
 
@@ -76,6 +77,12 @@ tmux. Run `./adversaria tmux` to create or attach a persistent tmux session
 *Interface rehearsal with simulated speech and a simulated model response.*
 
 ### Two-minute walkthrough
+
+For a prepared rehearsal, run `./adversaria demo` first, then open the dashboard
+and press **T**. It adds five labeled sample tasks to the current workspace,
+including four saved outputs and one queued task for a live run. Loading samples
+uses no API calls and does not replace your existing work. The sample research
+brief is prepared workspace evidence; real Exa research is a separate run.
 
 1. Press **K** to configure speech if needed, **A** to choose audio inputs, then
    **R** to record. Captions appear in the transcript pane.
@@ -86,11 +93,19 @@ tmux. Run `./adversaria tmux` to create or attach a persistent tmux session
 3. Say, “I will create an architecture diagram by Monday.” The commitment appears
    beside the transcript. Press **/** and type `approve c1` to queue it, or
    `dismiss c1` to discard it. Nothing runs on a spoken promise alone.
-4. Press **S** to stop and save. **M** opens previous meetings. Press **:** to
-   enter the command companion, then `work` to run approved queued tasks,
-   `task artifact 1` to review the draft, and `task approve 1` to mark it done.
+4. Press **T**, open the queued task, and press **G** to generate its draft with
+   OpenRouter. **O** opens a formatted browser preview; diagrams render visually
+   and offer an SVG download. **V** approves the draft, while **E** adds
+   revision feedback and **G** generates another draft. Earlier artifacts remain saved.
+5. Press **S** to stop and save. **M** opens previous meetings. **W** opens
+   workspaces; create or select one, **F** attaches context, and **N** creates a
+   writing, research, diagram, or presentation task. Research can use Exa sources.
 
-Prepare grounded demo context beforehand:
+![Adversaria workspace task review](cli/assets/terminal-workspace.svg)
+
+*Simulated workspace and draft. Task generation also works while recording.*
+
+Prepare grounded demo context beforehand, or use **W** and **F** inside the dashboard:
 
 ```bash
 ./adversaria workspace create "Hackathon"

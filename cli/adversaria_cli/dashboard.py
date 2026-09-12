@@ -17,7 +17,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from prompt_toolkit import Application
-from prompt_toolkit.application import get_app
+from prompt_toolkit.application import create_app_session, get_app, in_terminal
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import has_focus
@@ -36,6 +36,7 @@ from .copilot import QUESTION, Copilot
 from .engine import Engine
 from .transcription import speech_key
 from .ui import safe
+from .workspace_dashboard import WorkspaceDashboard
 
 STYLE = Style.from_dict(
     {
@@ -141,7 +142,7 @@ class ActionList:
         return result
 
 
-class Dashboard:
+class Dashboard(WorkspaceDashboard):
     def __init__(
         self, config, store, engine, *, recorder_factory=Recorder, input=None, output=None
     ):
@@ -161,6 +162,17 @@ class Dashboard:
         self.assistant_worker = CopilotWorker()
         self.assistant_future = None
         self.pending_question = None
+        self.workspace_sessions = {}
+        self.workspaces = []
+        self.tasks = []
+        self.selected_task = None
+        self.task_state = None
+        self.task_has_artifact = False
+        self.running_task = None
+        self.task_text = ""
+        self.task_future = None
+        self.task_cancel = threading.Event()
+        self.task_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="workspace-task")
         self.suggestions = TextArea(
             text="Ask aloud or type a question. Exa looks up outside information automatically. Use search QUERY to force a lookup, or ask --no-web QUESTION to skip it.",
             read_only=True,
@@ -183,16 +195,24 @@ class Dashboard:
         self.body = TextArea(read_only=True, scrollbar=True, focus_on_click=True)
         self.menu = ActionList(self.menu_entries, self.action)
         self.history = ActionList(self.history_entries, self.open_meeting)
+        self.workspace_list = ActionList(self.workspace_entries, self.select_workspace)
+        self.task_list = ActionList(self.task_entries, self.open_task)
+        self.workspace_panel = HSplit(
+            [
+                HSplit(
+                    [self.workspace_list.window],
+                    height=lambda: min(
+                        7, len(self.workspaces) + 1, max(2, self.app.output.get_size().rows - 21)
+                    ),
+                ),
+                Window(height=1, char="─", style="class:muted"),
+                self.body,
+            ]
+        )
         content = HSplit(
             [
                 Window(FormattedTextControl(self.heading), height=2),
-                DynamicContainer(
-                    lambda: (
-                        self.history.window
-                        if self.view == "history" and self.meetings
-                        else self.body
-                    )
-                ),
+                DynamicContainer(self.reader_container),
             ],
             padding=0,
         )
@@ -206,19 +226,19 @@ class Dashboard:
         wide = VSplit(
             [
                 Frame(HSplit([self.menu.window], width=25), title="ADVERSARIA"),
-                Frame(content, title="MEETING"),
+                Frame(content, title=self.content_title),
                 side,
             ]
         )
         compact = HSplit(
             [
-                Frame(content, title="MEETING"),
+                Frame(content, title=self.content_title),
                 VSplit(
                     [
                         Frame(self.suggestions, title="COPILOT"),
                         Frame(self.commitments, title="COMMITMENTS"),
                     ],
-                    height=8,
+                    height=lambda: 5 if terminal_output.get_size().rows < 28 else 8,
                 ),
             ]
         )
@@ -231,12 +251,10 @@ class Dashboard:
                 ),
                 Window(FormattedTextControl(self.status), height=2, wrap_lines=True),
                 Frame(
-                    self.command, title="ask QUESTION · search QUERY (Exa) · approve c1 · / to type"
+                    self.command, title="/ Command · ask · search · new · run · approve · H Help"
                 ),
                 Window(
-                    FormattedTextControl(
-                        " R Record  S Save  M Meetings  A Audio  K Key  / Ask  Tab Pane  Q Quit"
-                    ),
+                    FormattedTextControl(self.shortcuts),
                     height=1,
                     style="class:muted",
                 ),
@@ -259,11 +277,59 @@ class Dashboard:
         )
         self.show_home()
 
+    def content_title(self):
+        if self.view in {"workspaces", "source"}:
+            return "WORKSPACE"
+        if self.view in {"task", "tasks"}:
+            return "TASKS · OpenRouter"
+        return "MEETING"
+
+    def reader_container(self):
+        if self.view == "history" and self.meetings:
+            return self.history.window
+        if self.view == "workspaces":
+            return self.workspace_panel
+        if self.view == "tasks":
+            return self.task_list.window
+        return self.body
+
+    def reader_control(self):
+        if self.view == "history" and self.meetings:
+            return self.history.control
+        if self.view == "workspaces":
+            return self.workspace_list.control
+        if self.view == "tasks":
+            return self.task_list.control
+        return self.body.control
+
+    def shortcuts(self):
+        if self.view == "task":
+            actions = {
+                "queued": " G Run  E Edit brief",
+                "failed": " G Retry  E Edit brief",
+                "awaiting_review": " V Approve  E Revise",
+                "running": " X Cancel run" if self.selected_task == self.running_task else "",
+                "done": " Approved",
+            }.get(self.task_state, "")
+            preview = "  O Preview" if self.task_has_artifact else ""
+            return actions + preview + "  T Tasks  / Command  H Help  Q Quit"
+        if self.view in {"workspaces", "source"}:
+            return (
+                " W Spaces  F Attach  I Guide  P Pause  T Tasks  / Type  H Help  Q Quit"
+                if self.app.output.get_size().columns < 90
+                else " W Spaces  F Attach  I Instructions  P Pause  T Tasks  / Command  H Help  Q Quit"
+            )
+        return " R Record  S Save  M Meetings  W Spaces  T Tasks  N New  / Ask  H Help  Q Quit"
+
     def header(self):
-        state = self.phase.upper() if self.phase != "idle" else "MEETINGS"
+        state = self.phase.upper() if self.phase != "idle" else "READY"
         if self.phase == "recording":
             elapsed = int(time.monotonic() - self.started_at)
             state += f"  {elapsed // 60:02}:{elapsed % 60:02}"
+        if self.task_active:
+            state += f"  ·  TASK {self.running_task} " + (
+                "CANCELLING" if self.task_cancel.is_set() else "RUNNING"
+            )
         return [
             ("class:accent", " ADVERSARIA"),
             ("", "  /  " + safe(self.workspace["name"]) + "\n "),
@@ -276,15 +342,16 @@ class Dashboard:
             "live": "Live transcript",
             "history": "Previous meetings",
             "detail": "Saved meeting",
+            "workspaces": "Workspaces",
+            "tasks": "Workspace tasks",
+            "task": "Task & artifact",
+            "source": "Attached context",
+            "help": "Keyboard & commands",
         }[self.view]
-        focused = (
-            self.app.layout.has_focus(self.history.control)
-            if self.view == "history" and self.meetings
-            else self.app.layout.has_focus(self.body)
-        )
+        focused = self.app.layout.has_focus(self.reader_control())
         hint = (
             "  |  Arrows + Enter to open"
-            if self.view == "history"
+            if self.view in {"history", "workspaces", "tasks"}
             else "  |  Arrows / PgUp / PgDn to scroll"
         )
         return [("class:accent", " " + title), ("class:muted", hint if focused else ""), ("", "\n")]
@@ -302,13 +369,36 @@ class Dashboard:
         self.body.buffer.set_document(Document(text, position), bypass_readonly=True)
 
     def menu_entries(self):
-        return [
+        entries = [
             ("record", "[R] Live transcript" if self.recorder else "[R] Record meeting"),
             ("stop", "[S] Stop & save" if self.recorder else "[S] Stop (inactive)"),
             ("meetings", "[M] Previous meetings"),
+            ("workspaces", "[W] Workspaces"),
+            ("tasks", "[T] Workspace tasks"),
+            ("new_task", "[N] New task"),
+        ]
+        if self.view in {"workspaces", "source"}:
+            entries += [
+                ("attach", "[F] Attach context"),
+                ("instructions", "[I] Instructions"),
+                ("pause", "[P] Pause / resume"),
+            ]
+        if self.view == "task":
+            if self.task_has_artifact:
+                entries.append(("preview_task", "[O] Open preview"))
+            if self.task_state in {"queued", "failed"}:
+                entries.append(("run_task", "[G] Run / retry"))
+            if self.task_state == "awaiting_review":
+                entries.append(("approve_task", "[V] Approve draft"))
+            if self.task_state in {"queued", "failed", "awaiting_review"}:
+                entries.append(("revise_task", "[E] Edit / revise"))
+        if self.task_active:
+            entries.append(("cancel_task", "[X] Cancel task run"))
+        return entries + [
             ("audio", "[A] Audio inputs"),
             ("key", "[K] Speech API key"),
             ("shell", "[:] Command shell"),
+            ("help", "[H] Help"),
             ("quit", "[Q] Quit"),
         ]
 
@@ -325,6 +415,18 @@ class Dashboard:
             ("r", "record"),
             ("s", "stop"),
             ("m", "meetings"),
+            ("w", "workspaces"),
+            ("t", "tasks"),
+            ("n", "new_task"),
+            ("f", "attach"),
+            ("i", "instructions"),
+            ("p", "pause"),
+            ("g", "run_task"),
+            ("o", "preview_task"),
+            ("v", "approve_task"),
+            ("e", "revise_task"),
+            ("x", "cancel_task"),
+            ("h", "help"),
             ("a", "audio"),
             ("k", "key"),
             (":", "shell"),
@@ -342,24 +444,31 @@ class Dashboard:
         @bindings.add("s-tab")
         def switch(event):
             panes = [
-                self.history.control
-                if self.view == "history" and self.meetings
-                else self.body.control,
+                self.reader_control(),
                 self.suggestions.control,
                 self.commitments.control,
                 self.command.control,
             ]
+            if self.view == "workspaces":
+                panes.insert(1, self.body.control)
             if self.app.output.get_size().columns >= 110:
                 panes.insert(0, self.menu.control)
             current = self.app.layout.current_control
+            direction = -1 if event.key_sequence[0].key == "s-tab" else 1
             self.app.layout.focus(
-                panes[(panes.index(current) + 1) % len(panes)] if current in panes else panes[0]
+                panes[(panes.index(current) + direction) % len(panes)]
+                if current in panes
+                else panes[0]
             )
 
         @bindings.add("escape")
         def back(event):
             if self.view == "detail":
                 self.show_meetings()
+            elif self.view == "task":
+                self.show_tasks()
+            elif self.view == "source":
+                self.show_workspaces()
             else:
                 self.focus_reader()
 
@@ -378,6 +487,9 @@ class Dashboard:
             " Capture your microphone and follow the live transcript here.\n\n"
             " Previous meetings\n"
             " Read the transcripts and notes saved in this workspace.\n\n"
+            " Workspaces & tasks\n"
+            " Press W to choose a workspace and attach context.\n"
+            " Press T to browse tasks, or N to create a draft, research brief or diagram.\n\n"
             " Use arrow keys + Enter, click an action, or press its shortcut.\n"
             " Tab switches panes. Arrow keys / Page Up / Page Down scroll.\n\n"
             f" Audio is sent to {provider} for transcription.\n"
@@ -399,9 +511,7 @@ class Dashboard:
         self.focus_reader()
 
     def focus_reader(self):
-        self.app.layout.focus(
-            self.history.control if self.view == "history" and self.meetings else self.body
-        )
+        self.app.layout.focus(self.reader_control())
 
     def show_meetings(self):
         self.meetings = self.store.rows(
@@ -430,6 +540,12 @@ class Dashboard:
     def action(self, action):
         if action == "meetings":
             self.show_meetings()
+        elif action == "workspaces":
+            self.show_workspaces()
+        elif action == "tasks":
+            self.show_tasks()
+        elif action == "help":
+            self.show_help()
         elif action == "record" and self.recorder:
             self.show_live()
         elif self.busy:
@@ -450,7 +566,28 @@ class Dashboard:
             elif action in {"quit", "shell"}:
                 if self.recorder and self.phase != "stopped" and not await self.stop_recording():
                     return
+                await self.finish_workspace_task()
                 self.app.exit(result=action)
+            elif action == "new_workspace":
+                await self.workspace_dialog()
+            elif action == "attach":
+                await self.attachment_dialog()
+            elif action == "instructions":
+                await self.instructions_dialog()
+            elif action == "pause":
+                self.pause_workspace()
+            elif action == "new_task":
+                await self.new_task_dialog()
+            elif action == "run_task":
+                self.run_workspace_task()
+            elif action == "preview_task":
+                await self.preview_task()
+            elif action == "approve_task":
+                self.approve_task()
+            elif action == "revise_task":
+                await self.revise_task_dialog()
+            elif action == "cancel_task":
+                self.cancel_workspace_task()
             elif action == "audio":
                 await self.choose_audio()
             elif action == "key":
@@ -560,23 +697,23 @@ class Dashboard:
         values = [("default", "System default microphone")] + [
             (d["id"], safe(d["name"])) for d in inputs
         ]
-        mic = await radiolist_dialog(
+        mic = await self.dialog(
+            radiolist_dialog,
             title="Microphone",
             text="Choose the microphone for your next meeting.",
             values=values,
             default=self.mic if self.mic is not None else "default",
-            style=STYLE,
-        ).run_async()
+        )
         if mic is None:
             self.set_status("Audio inputs unchanged.")
             return
-        loopback = await radiolist_dialog(
+        loopback = await self.dialog(
+            radiolist_dialog,
             title="Other side of the call",
             text="Optional loopback INPUT. Route your call output to it first (e.g. BlackHole).",
             values=[("none", "Microphone only")] + values[1:],
             default=self.system_device if self.system_device is not None else "none",
-            style=STYLE,
-        ).run_async()
+        )
         if loopback is None:
             self.set_status("Audio inputs unchanged.")
             return
@@ -594,17 +731,23 @@ class Dashboard:
             self.set_status("Stop and save the recording before changing the speech key.")
             return
         provider = self.config.values["speech_provider"]
-        value = await input_dialog(
+        value = await self.dialog(
+            input_dialog,
             title=f"{provider} speech key",
             text="Paste your API key. Input is hidden; leave blank to keep the current key.",
             password=True,
-            style=STYLE,
-        ).run_async()
+        )
         if value and value.strip():
             self.config.save_key(provider, value.strip())
             self.set_status("Speech key saved. Press R to record a meeting.")
         else:
             self.set_status("Speech key unchanged.")
+
+    async def dialog(self, factory, **kwargs):
+        # Suspend parent rendering and input; recording and task workers keep running.
+        async with in_terminal():
+            with create_app_session(input=self.app.input, output=self.app.output):
+                return await factory(style=self.app.style, **kwargs).run_async()
 
     @staticmethod
     def set_panel(panel, text):
@@ -617,9 +760,14 @@ class Dashboard:
             self.commitments,
             "\n\n".join(
                 f"{c.id} · {c.kind} · {c.status}\n{c.text}\n"
-                + (f"Task {c.task_id} queued" if c.task_id else f"approve {c.id} / dismiss {c.id}")
+                + (
+                    f"Task {c.task_id} · T to view"
+                    if c.task_id
+                    else f"approve {c.id} / dismiss {c.id}"
+                )
                 for c in cards
-            ),
+            )
+            or "Spoken commitments appear here.\nApprove a commitment to queue a task.",
         )
 
     def ask(self, question, web=None):
@@ -629,6 +777,7 @@ class Dashboard:
             return
         generation = self.generation
         turns = list(self.copilot.turns)
+        workspace_name = self.workspace["name"]
         self.events.put(("answer_start", generation, ("Exa search · " if web else "") + question))
 
         def answer():
@@ -636,7 +785,7 @@ class Dashboard:
             try:
                 tokens = Engine(self.config, self.store).answer(
                     question,
-                    self.workspace["name"],
+                    workspace_name,
                     turns,
                     provider="openrouter",
                     model=self.config.values.get("copilot_model", "google/gemini-2.5-flash-lite"),
@@ -660,7 +809,9 @@ class Dashboard:
     def submit_command(self, buffer):
         command, _, value = buffer.text.strip().partition(" ")
         try:
-            if command in {"ask", "search"} and value:
+            if self.workspace_command(command, value):
+                pass
+            elif command in {"ask", "search"} and value:
                 web = True if command == "search" else None
                 if command == "ask":
                     for flag, enabled in (("--no-web", False), ("--web", True)):
@@ -688,8 +839,10 @@ class Dashboard:
                     )
                     caught.status = "approved"
                     self.set_status(
-                        f"Task {caught.task_id} queued. Use Command shell → work to run it."
+                        f"Task {caught.task_id} queued. Press T, open it, then G to run."
                     )
+                    if self.view == "tasks":
+                        self.refresh_tasks()
                 self.refresh_commitments()
             elif command and (
                 QUESTION.match(buffer.text.strip()) or buffer.text.rstrip().endswith("?")
@@ -697,7 +850,7 @@ class Dashboard:
                 self.ask(buffer.text.strip())
             elif command:
                 raise CliError(
-                    "Type a question, or use ask QUESTION, search QUERY, approve c1, or dismiss c1."
+                    "Type a question or command. H opens help; T opens tasks; W opens workspaces."
                 )
         except (CliError, OSError, ValueError) as exc:
             self.set_status(str(exc), error=True)
@@ -706,8 +859,12 @@ class Dashboard:
 
     def drain_events(self):
         changed = False
+        task_changed = False
         while not self.events.empty():
             kind, source, text = self.events.get_nowait()
+            if self.workspace_event(kind, source, text):
+                task_changed = True
+                continue
             if kind == "caption":
                 text, boundary = text if isinstance(text, tuple) else (text, "silence")
                 caught, question = self.copilot.feed(text, source, boundary)
@@ -739,6 +896,12 @@ class Dashboard:
             # Preserve the reader's place when they scroll back during a meeting.
             follow = self.body.buffer.cursor_position == len(self.body.text)
             self.set_body("\n".join(self.live_lines), follow=follow)
+        if task_changed:
+            if self.view == "tasks":
+                self.refresh_tasks()
+            elif self.view == "task" and self.selected_task == self.running_task:
+                follow = self.body.buffer.cursor_position == len(self.body.text)
+                self.render_task(follow=follow)
 
     async def monitor(self):
         while True:
@@ -756,14 +919,18 @@ class Dashboard:
         try:
             return self.app.run(pre_run=lambda: self.app.create_background_task(self.monitor()))
         finally:
+            self.task_cancel.set()
             # An interrupted await does not cancel a running audio thread. Join it first.
             self.worker.shutdown(wait=True, cancel_futures=True)
             self.generation += 1
             self.assistant_worker.shutdown(wait=False, cancel_futures=True)
             # EOF / terminal closure must also stop capture and retain recoverable audio.
-            if self.recorder:
-                recorder = self.recorder
-                try:
-                    self.finish_recording()
-                except Exception as exc:
-                    raise CliError(f"{exc} Audio preserved at {recorder.directory}.") from exc
+            try:
+                if self.recorder:
+                    recorder = self.recorder
+                    try:
+                        self.finish_recording()
+                    except Exception as exc:
+                        raise CliError(f"{exc} Audio preserved at {recorder.directory}.") from exc
+            finally:
+                self.task_worker.shutdown(wait=True, cancel_futures=True)

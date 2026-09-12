@@ -57,6 +57,15 @@ def dashboard(env):
         )
         yield ui, pipe
         ui.worker.shutdown(wait=True)
+        ui.task_cancel.set()
+        ui.task_worker.shutdown(wait=True)
+
+
+def command(ui, text):
+    from prompt_toolkit.buffer import Buffer
+    from prompt_toolkit.document import Document
+
+    ui.submit_command(Buffer(document=Document(text)))
 
 
 async def until(predicate):
@@ -433,3 +442,373 @@ def test_dashboard_ask_accepts_search_override_flags(dashboard, monkeypatch, fla
     ui.submit_command(Buffer(document=Document(f"ask {flag} What is AI Tinkerers?")))
     ui.assistant_worker.shutdown(wait=True)
     assert calls == [("What is AI Tinkerers?", expected)]
+
+
+def test_workspace_commands_attach_context_instructions_and_restore_commitments(
+    dashboard, tmp_path
+):
+    ui, _ = dashboard
+    original = ui.workspace["name"]
+    ui.copilot.feed("I will write our architecture document.", "Me", "silence")
+    assert "c1" in ui.copilot.commitments
+    source = tmp_path / "project context.md"
+    source.write_text("Adversaria uses OpenRouter and Exa.", encoding="utf-8")
+    command(ui, "workspace Hackathon")
+    assert ui.config.values["workspace"] == "Hackathon"
+    assert not ui.copilot.commitments
+    command(ui, f'attach "{source}"')
+    command(ui, "instructions Keep answers short and cite sources.")
+    assert "project context.md" in ui.body.text
+    assert "Keep answers short" in ui.workspace["instructions"]
+    assert "OpenRouter" in ui.store.context(ui.workspace["id"], "Adversaria")
+    source_id = ui.store.rows("SELECT id FROM sources")[0]["id"]
+    command(ui, f"source {source_id}")
+    assert ui.view == "source" and "OpenRouter and Exa" in ui.body.text
+    command(ui, f"workspace {original}")
+    assert "c1" in ui.copilot.commitments
+    assert "project context.md" not in ui.body.text
+    command(ui, f"source {source_id}")
+    assert ui.error and "not in the current workspace" in ui.message
+    command(ui, "approve c1")
+    assert ui.store.rows("SELECT * FROM tasks")[0]["workspace_id"] == ui.workspace["id"]
+
+
+def test_recording_prevents_workspace_switch_but_allows_task_browsing(dashboard):
+    ui, _ = dashboard
+    wid = ui.workspace["id"]
+
+    async def scenario():
+        await ui.start_recording()
+        command(ui, "workspace Another workspace")
+        assert ui.error and "Stop and save" in ui.message
+        assert ui.workspace["id"] == wid
+        assert not ui.store.rows("SELECT * FROM workspaces WHERE name='Another workspace'")
+        command(ui, "new write Draft a meeting summary")
+        ui.show_tasks()
+        assert len(ui.tasks) == 1 and ui.recorder.started
+        ui.recorder.emit("Still recording while we browse tasks.")
+        assert await ui.stop_recording()
+        assert ui.store.rows("SELECT * FROM meetings")[0]["workspace_id"] == wid
+
+    asyncio.run(scenario())
+
+
+def test_task_keyboard_run_revision_and_approval_keep_local_artifacts(dashboard, monkeypatch):
+    ui, pipe = dashboard
+    prompts = []
+
+    def generate(self, system, prompt, provider=None, model=None):
+        assert provider == "openrouter"
+        prompts.append(prompt)
+        yield "# Architecture draft\n"
+        yield "Our audio flows through OpenRouter."
+
+    monkeypatch.setattr("adversaria_cli.models.Models.generate", generate)
+    ui.config.save(provider="codex")
+
+    async def scenario():
+        app = asyncio.create_task(
+            ui.app.run_async(pre_run=lambda: ui.app.create_background_task(ui.monitor()))
+        )
+        await until(lambda: ui.app.is_running)
+        pipe.send_text("/new write Draft the architecture\r")
+        await until(lambda: ui.view == "task")
+        tid = ui.selected_task
+        assert ui.store.task(tid)["status"] == "queued"
+        pipe.send_text("g")
+        await until(lambda: ui.store.task(tid)["status"] == "awaiting_review")
+        await until(lambda: "SAVED ARTIFACT" in ui.body.text)
+        assert "# Architecture draft" in ui.body.text
+        first = ui.store.artifact(tid)
+        pipe.send_text(f"/revise {tid} Include Exa search and privacy.\r")
+        await until(lambda: ui.store.task(tid)["status"] == "queued")
+        pipe.send_text("g")
+        await until(lambda: len(ui.store.rows("SELECT * FROM runs")) == 2 and not ui.task_active)
+        await until(lambda: "SAVED ARTIFACT" in ui.body.text)
+        assert "Include Exa search and privacy." in prompts[-1]
+        assert ui.store.artifact(tid) != first and first.exists()
+        pipe.send_text("v")
+        await until(lambda: ui.store.task(tid)["status"] == "done")
+        pipe.send_text("t")
+        await until(lambda: ui.view == "tasks")
+        assert "Approved" in ui.task_entries()[1][1]
+        pipe.send_text("q")
+        assert await app == "quit"
+
+    asyncio.run(scenario())
+
+
+def test_task_runs_independently_of_audio_and_keeps_its_workspace(dashboard, monkeypatch):
+    ui, _ = dashboard
+    release = threading.Event()
+    generating = threading.Event()
+
+    def generate(*args, **kwargs):
+        generating.set()
+        assert release.wait(3)
+        yield "Finished in the original workspace."
+
+    monkeypatch.setattr("adversaria_cli.models.Models.generate", generate)
+    tid = ui.add_workspace_task("Write the project brief")
+    wid = ui.workspace["id"]
+    ui.run_workspace_task(tid)
+    assert generating.wait(3)
+
+    async def scenario():
+        await ui.start_recording()
+        ui.recorder.emit("Captions continue while the task is generating.")
+        ui.drain_events()
+        assert "Captions continue" in ui.body.text
+        assert await ui.stop_recording()
+        ui.use_workspace("Other workspace")
+        ui.show_tasks()
+        assert not ui.tasks
+        release.set()
+        await asyncio.wrap_future(ui.task_future)
+        ui.drain_events()
+        assert ui.view == "tasks" and not ui.tasks
+        assert ui.store.task(tid)["workspace_id"] == wid
+        assert ui.store.task(tid)["status"] == "awaiting_review"
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
+
+
+def test_cancel_then_retry_persists_failure_and_never_accepts_partial_output(
+    dashboard, monkeypatch
+):
+    ui, _ = dashboard
+    waiting = threading.Event()
+    release = threading.Event()
+
+    def generate(*args, **kwargs):
+        yield "Partial text"
+        waiting.set()
+        assert release.wait(3)
+        yield "must not become an artifact"
+
+    monkeypatch.setattr("adversaria_cli.models.Models.generate", generate)
+    tid = ui.add_workspace_task("Draft the README")
+    ui.run_workspace_task(tid)
+    try:
+        assert waiting.wait(3)
+        ui.cancel_workspace_task()
+        release.set()
+        ui.task_future.result(timeout=3)
+        ui.drain_events()
+        assert ui.store.task(tid)["status"] == "failed"
+        assert "cancelled" in ui.message
+        with pytest.raises(CliError, match="No completed artifact"):
+            ui.store.artifact(tid)
+        monkeypatch.setattr(
+            "adversaria_cli.models.Models.generate", lambda *a, **kw: iter(["Complete draft"])
+        )
+        ui.run_workspace_task(tid)
+        ui.task_future.result(timeout=3)
+        ui.drain_events()
+        assert ui.store.task(tid)["status"] == "awaiting_review"
+        assert ui.store.artifact(tid).read_text() == "Complete draft\n"
+    finally:
+        release.set()
+
+
+def test_pause_scope_and_review_guards(dashboard, monkeypatch):
+    ui, _ = dashboard
+    monkeypatch.setattr(
+        "adversaria_cli.models.Models.generate", lambda *a, **kw: iter(["Review this draft."])
+    )
+    tid = ui.add_workspace_task("Draft a summary")
+    command(ui, "pause")
+    command(ui, f"run {tid}")
+    assert ui.error and "paused" in ui.message
+    assert ui.store.task(tid)["status"] == "queued"
+    command(ui, "resume")
+    command(ui, f"run {tid}")
+    ui.task_future.result(timeout=3)
+    ui.drain_events()
+    ui.show_tasks()
+    command(ui, f"approve {tid}")
+    assert ui.view == "task"
+    assert ui.store.task(tid)["status"] == "awaiting_review"
+    ui.store.artifact(tid).unlink()
+    command(ui, f"approve {tid}")
+    assert ui.error and ui.store.task(tid)["status"] == "awaiting_review"
+    ui.use_workspace("Unrelated")
+    command(ui, f"run {tid}")
+    assert ui.error and "another workspace" in ui.message
+    command(ui, f"revise {tid} Wrong workspace")
+    assert "Wrong workspace" not in ui.store.task(tid)["details"]
+
+
+def test_quit_saves_audio_and_cancels_in_flight_task(dashboard, monkeypatch):
+    ui, pipe = dashboard
+    waiting = threading.Event()
+
+    def generate(*args, **kwargs):
+        waiting.set()
+        assert ui.task_cancel.wait(3)
+        yield "Cancelled output"
+
+    monkeypatch.setattr("adversaria_cli.models.Models.generate", generate)
+    tid = ui.add_workspace_task("Draft a summary")
+
+    async def scenario():
+        app = asyncio.create_task(
+            ui.app.run_async(pre_run=lambda: ui.app.create_background_task(ui.monitor()))
+        )
+        await until(lambda: ui.app.is_running)
+        ui.run_workspace_task(tid)
+        await until(waiting.is_set)
+        pipe.send_text("r")
+        await until(lambda: ui.phase == "recording")
+        pipe.send_text("q")
+        assert await asyncio.wait_for(app, 3) == "quit"
+        assert ui.recorder is None and not ui.task_active
+        assert ui.store.task(tid)["status"] == "failed"
+        assert len(ui.store.rows("SELECT * FROM meetings")) == 1
+
+    asyncio.run(scenario())
+
+
+def test_research_task_uses_exa_only_when_selected(dashboard, monkeypatch):
+    ui, _ = dashboard
+    calls = []
+    ui.config.save_key("exa", "synthetic-exa")
+
+    def search(config, query):
+        calls.append(query)
+        return [{"title": "Reference", "url": "https://example.com/reference", "text": "Evidence."}]
+
+    monkeypatch.setattr("adversaria_cli.engine.search", search)
+    monkeypatch.setattr(
+        "adversaria_cli.models.Models.generate", lambda *a, **kw: iter(["Research brief"])
+    )
+    command(ui, "new research --web Compare speech services")
+    tid = ui.selected_task
+    ui.run_workspace_task(tid)
+    ui.task_future.result(timeout=3)
+    ui.drain_events()
+    assert calls == ["Compare speech services"]
+    assert "https://example.com/reference" in ui.body.text
+    command(ui, f"revise {tid} ")
+    assert ui.error and ui.store.task(tid)["status"] == "awaiting_review"
+
+
+def test_terminal_eof_cancels_task_and_persists_a_retryable_state(dashboard, monkeypatch):
+    ui, pipe = dashboard
+    waiting = threading.Event()
+
+    def generate(*args, **kwargs):
+        waiting.set()
+        assert ui.task_cancel.wait(3)
+        yield "Do not save this partial draft"
+
+    monkeypatch.setattr("adversaria_cli.models.Models.generate", generate)
+    tid = ui.add_workspace_task("Draft a summary")
+    ui.run_workspace_task(tid)
+
+    def close_terminal():
+        assert waiting.wait(3)
+        pipe.close()
+
+    closer = threading.Thread(target=close_terminal)
+    closer.start()
+    try:
+        with pytest.raises(EOFError):
+            ui.run()
+    finally:
+        ui.task_cancel.set()
+        closer.join(timeout=3)
+    assert not ui.task_active
+    assert ui.store.task(tid)["status"] == "failed"
+    assert ui.store.rows("SELECT * FROM runs WHERE status='running'") == []
+
+
+def test_edit_shortcut_requires_open_task_and_dialog_names_its_target(dashboard, monkeypatch):
+    ui, _ = dashboard
+    tid = ui.add_workspace_task("Write the architecture brief")
+    ui.show_tasks()
+    with pytest.raises(CliError, match="open the task"):
+        asyncio.run(ui.revise_task_dialog())
+    ui.show_workspaces()
+    with pytest.raises(CliError, match="open the task"):
+        asyncio.run(ui.revise_task_dialog())
+    assert ui.store.task(tid)["details"] == ""
+    ui.open_task(tid)
+    dialogs = []
+
+    async def dialog(factory, **kwargs):
+        dialogs.append(kwargs)
+        return "Add Exa provenance."
+
+    monkeypatch.setattr(ui, "dialog", dialog)
+    asyncio.run(ui.revise_task_dialog())
+    assert f"Task {tid}" in dialogs[0]["title"]
+    assert "Write the architecture brief" in dialogs[0]["text"]
+    assert "Add Exa provenance" in ui.store.task(tid)["details"]
+
+
+def test_native_workspace_dialog_owns_input_and_restores_the_dashboard(dashboard, monkeypatch):
+    from prompt_toolkit.shortcuts import input_dialog
+
+    ui, pipe = dashboard
+    dialogs = []
+
+    def observe(**kwargs):
+        app = input_dialog(**kwargs)
+        dialogs.append(app)
+        return app
+
+    monkeypatch.setattr("adversaria_cli.workspace_dashboard.input_dialog", observe)
+
+    async def scenario():
+        app = asyncio.create_task(
+            ui.app.run_async(pre_run=lambda: ui.app.create_background_task(ui.monitor()))
+        )
+        await until(lambda: ui.app.is_running)
+        pipe.send_text("w")
+        await until(lambda: ui.view == "workspaces")
+        pipe.send_text("\r")
+        await until(lambda: dialogs and dialogs[0].is_running)
+        assert dialogs[0].input is ui.app.input
+        # Enter focuses OK; the next Enter submits the dialog.
+        pipe.send_text("Keyboard workspace\r\r")
+        await until(lambda: ui.workspace["name"] == "Keyboard workspace")
+        assert ui.view == "workspaces" and not ui.busy
+        pipe.send_text("q")
+        assert await app == "quit"
+
+    asyncio.run(scenario())
+
+
+def test_preview_shortcut_opens_the_selected_artifact_without_approving_it(dashboard, monkeypatch):
+    from adversaria_cli.demo import seed_demo
+
+    ui, pipe = dashboard
+    _, tasks = seed_demo(ui.config, ui.store)
+    task = next(t for t in tasks if t["kind"] == "visualize")
+    opened = []
+    monkeypatch.setattr(
+        "adversaria_cli.preview.webbrowser.open", lambda url: opened.append(url) or True
+    )
+    ui.open_task(task["id"])
+    assert ("preview_task", "[O] Open preview") in ui.menu_entries()
+
+    async def scenario():
+        app = asyncio.create_task(ui.app.run_async())
+        await until(lambda: ui.app.is_running)
+        pipe.send_text("o")
+        await until(lambda: opened and not ui.busy)
+        assert opened[0].endswith("/preview.html")
+        assert ui.store.task(task["id"])["status"] == "awaiting_review"
+        pipe.send_text("w")
+        await until(lambda: ui.view == "workspaces")
+        pipe.send_text("o")
+        await until(lambda: ui.error)
+        assert len(opened) == 1
+        pipe.send_text("q")
+        assert await app == "quit"
+
+    asyncio.run(scenario())

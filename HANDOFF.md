@@ -1,5 +1,71 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
+> **PUBLISH CHECKPOINT — 2026-09-12: coordinating all remaining CLI changes
+> into the authorized repository push. This supersedes the uncommitted notes below.**
+
+- Included: workspace navigation and background task/review workflow, repeatable
+  labeled demo fixtures, offline Markdown/Mermaid previews with SVG download,
+  bundled renderer/license, tests, and the matching product/submission docs.
+- Fresh verification on the combined tree: **93 CLI tests passed**; Ruff lint,
+  formatting and whitespace checks passed. Changed-file credential-pattern scan
+  found no matches. The vendored Mermaid MIT license is included.
+- Presentation, README attribution, automatic Exa lookup, desktop screenshot and
+  lagharilabs.com corrections were already pushed. The latest four-slide story
+  remains the current presentation.
+- Next after the push: reopen the installed dashboard for its newest shortcuts
+  and demonstrate the reviewed artifact flow. Real microphone/loopback and
+  Windows rehearsal remain separate checks. A repository push does not submit
+  the hackathon entry or publish the drafted LinkedIn post.
+
+> **CURRENT CLI DIAGRAM — 2026-09-12 16:19 GST: task 5 now has an actual
+> rendered diagram, opened in the browser; preview support is installed.**
+
+- Fixed the missing renderer: **O / Open preview** on a saved task opens local
+  formatted Markdown with Mermaid rendered as SVG. The shell equivalent is
+  `adversaria task preview 5`; `--no-open` saves HTML without launching it.
+  The standalone HTML bundles Mermaid, works offline and offers Download SVG.
+- Task 5 in Interviews now has `preview.html` and a verified `diagram.svg`
+  alongside `~/.local/share/adversaria-cli/artifacts/5/4/artifact.md`.
+  The original prepared fixture and the user's approval remain intact.
+- **Verified:** 93 CLI tests passed; Ruff lint/format and whitespace checks
+  passed. Browser checks showed eight nodes, working SVG download, zero HTTP
+  requests and no JavaScript errors. Wide and narrow screenshots were reviewed:
+  **ship**, no material findings. Installed modules and vendored renderer match
+  source; the global preview command opened the final diagram successfully.
+- Implementation is in `preview.py`, dashboard task actions and CLI dispatch;
+  Markdown rendering is explicit and the renderer/license are bundled. Root and
+  CLI README, HACKATHON, SPEC, STRATEGY and CLI design notes cover the preview.
+- **Next:** the standalone command works immediately. Save/quit and reopen the
+  running dashboard to load the new **O** shortcut, then T → task 5 → O.
+  Rehearse one real model run separately from these clearly labeled fixtures.
+  No commit, push or submission was made by this renderer fix.
+
+> **CURRENT CLI DEMO — 2026-09-12 16:07 GST: five prepared tasks added to the
+> existing Interviews workspace, as explicitly requested.**
+
+- Added **DEMO** task 6 README draft, task 5 Mermaid architecture, and task 4
+  research brief awaiting review; task 3 approved four-slide Markdown outline;
+  task 2 queued judge follow-up for an actual G run. Four artifacts are saved
+  under the normal CLI artifact directory, with one demo context attachment.
+- Every fixture task/output is labeled simulated. Seeded run receipts identify
+  `provider=simulation`; the research sample uses prepared workspace context,
+  not a live Exa search. Seeding made no API calls or recordings and preserved
+  the existing task, workspace instructions, selection and provider settings.
+- Added reusable `adversaria demo [--workspace NAME]`; it defaults to the current
+  workspace, adds only missing fixtures and retains edited/approved samples on
+  repeated use. Database fixture insertion rolls back on artifact write failure.
+  Implementation: `cli/adversaria_cli/demo.py`, command dispatch and three tests.
+- **Verified:** 89 CLI tests, Ruff lint/format and whitespace checks; all five
+  real Interviews sample tasks opened through the dashboard, with four readable
+  saved outputs. Global CLI reinstalled. README/CLI guide and SPEC/STRATEGY reflect
+  the prepared rehearsal; prior presentation work was preserved.
+- **Next:** press **T** in the current dashboard; open task **6** and approve
+  with V, open **5** to show diagram source or E to request revision, then
+  open **2** and press G for a real OpenRouter run. No restart is needed to
+  refresh tasks in an already running workspace-capable dashboard. Fresh
+  Exa research and microphone/loopback capture remain separate live rehearsals.
+  No commit, push or submission was made by this demo-seeding turn.
+
 > **CURRENT PRESENTATION — 2026-09-12 16:01 GST: the current website is
 > lagharilabs.com. Four-slide story and standalone slide refreshed.**
 
@@ -27,7 +93,39 @@
   stated deadline remains **16:30 GST**. The CLI checkpoint below is separate
   work and is preserved for its owner to publish.
 
-> **CURRENT — 2026-09-12 15:50 GST: one-slide presentation delivered and pushed
+> **CURRENT — 2026-09-12 15:52 GST: CLI workspace dashboard completed, verified
+> and installed locally. Workspace extension remains uncommitted.**
+
+- The boxed CLI now includes **W** workspace creation/switching, **F** context
+  attachments, **I** instructions, **P** task pause/resume, **N** task creation,
+  **T** task browsing, **G** run/retry, **V** artifact approval, **E** revision
+  feedback and **X** cancellation. Entry remains `adversaria` or `adversaria tmux`.
+- Dashboard tasks and Copilot use OpenRouter; research tasks can use Exa.
+  Writing, research, Mermaid diagrams and presentation outlines produce local
+  Markdown artifacts. Revisions retain earlier artifacts. Recording continues
+  during task execution; save a recording before switching its workspace.
+- Implementation: `cli/adversaria_cli/workspace_dashboard.py`, dashboard
+  integration, atomic revision feedback in `store.py`, and dashboard tests.
+  Task cancellation/terminal EOF persist retryable state. Native dialogs now
+  suspend parent rendering/input while background work continues.
+- Validation: **86 CLI tests passed**, Ruff lint/format and whitespace checks
+  passed. Real OpenRouter writing completed in **2.37 s**; Exa + OpenRouter
+  research completed in **4.07 s** using isolated synthetic context. Both
+  artifacts reached review and were approved locally. These are sample timings.
+- UI review: **ship**, no open findings. The 80×24 workspace layout and revision
+  target guards were fixed and recaptured. The installed global command was
+  refreshed, its three changed modules matched source hashes, and its workspace
+  screen was verified at 80×24. Only isolated QA tmux sessions were closed.
+- Documentation: root/CLI README, HACKATHON, CLI design and provider notes
+  updated; `cli/assets/terminal-workspace.svg` is explicitly simulated.
+- **Next:** save/quit the existing CLI session, reopen `adversaria`, then
+  rehearse W → F → N/T → G → V/E with a real microphone/loopback meeting.
+  Actual audio routing and Windows remain unverified by this extension.
+  Include the workspace code/docs/assets in the next coordinated submission
+  checkpoint; this turn made no commit, push, release or hackathon submission.
+  The separate one-slide delivery below remains current; deadline **16:30 GST**.
+
+> **PRESENTATION CHECKPOINT — 2026-09-12 15:50 GST: one-slide presentation delivered and pushed
 > to `origin/main` as `71a6d7a`; README links select it by default.**
 
 - [One-slide PDF](marketing/adversaria-story/output/adversaria-one-slide.pdf),
@@ -56,19 +154,11 @@
 - README explicitly says the CLI was built using **OpenAI Codex** and integrates
   hackathon sponsors **OpenRouter** for speech/model responses and **Exa AI** for
   search/research (`d76292e`). Whitespace checks passed; these were documentation edits.
-- Separate working-tree work is present in `cli/adversaria_cli/dashboard.py`,
-  `cli/adversaria_cli/store.py`, `cli/tests/test_dashboard.py` and new
-  `cli/adversaria_cli/workspace_dashboard.py`. The dashboard now imports the new
-  workspace mixin; the pending diff adds workspace/task navigation, background
-  task controls, draft review/revision and associated tests. Store revision
-  feedback requeues eligible tasks. These changes remain uncommitted and are
-  still evolving in the shared working tree as of this checkpoint.
-  Associated pending CLI documentation, provider-check notes and
-  `cli/assets/terminal-workspace.svg` also remain with that work. Only the
-  presentation-link hunk of the shared root README was included in `71a6d7a`.
-  They are outside this documentation checkpoint and have not been verified here;
-  coordinate with its owning worker before staging. Earlier test counts describe
-  the committed CLI, not these pending changes.
+- The separate CLI workspace extension was still evolving during this README
+  checkpoint; it is now completed and verified in the 15:52 GST checkpoint above.
+  Its code, tests, documentation and workspace screenshot remain uncommitted.
+  Only the presentation-link hunk of the shared root README was included in
+  `71a6d7a`; preserve that published slide work when collecting the CLI changes.
 
 > **CHAT FIX CHECKPOINT — 2026-09-12 15:32 GST: fixed the reported AI Tinkerers chat answer and
 > enabled automatic Exa lookup as requested. Installed CLI refreshed.**

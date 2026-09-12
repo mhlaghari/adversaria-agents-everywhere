@@ -285,6 +285,17 @@ class Store:
             ).rowcount:
                 raise CliError("Only a task awaiting review can be approved or revised.")
 
+    def revise(self, task_id, feedback):
+        if not feedback.strip():
+            raise CliError("Include feedback for the next draft.")
+        with self.db() as db:
+            if not db.execute(
+                "UPDATE tasks SET status='queued',details=details||? "
+                "WHERE id=? AND status IN ('queued','failed','awaiting_review')",
+                ("\n\nRevision request:\n" + feedback.strip(), task_id),
+            ).rowcount:
+                raise CliError("Revise a queued/failed task or a draft awaiting review.")
+
     def artifact(self, task_id):
         rows = self.rows(
             "SELECT artifact FROM runs WHERE task_id=? AND artifact IS NOT NULL ORDER BY id DESC LIMIT 1",

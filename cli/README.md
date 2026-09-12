@@ -44,10 +44,18 @@ required. Select an action with arrow keys and Enter, click it, or use a shortcu
 | R | Record a meeting, or return to its live transcript |
 | S | Stop capture, wait for the final caption, and save |
 | M | Browse previous meetings in the current workspace |
+| W | Browse or create workspaces |
+| F / I / P | Attach context, edit instructions, pause/resume task starts |
+| T / N | Browse workspace tasks / create a task |
+| G | Run or retry the open task with OpenRouter |
+| V / E | Approve the displayed draft / revise or edit its brief |
+| O | Open a rendered artifact preview in the browser; diagrams offer Download SVG |
+| X | Cancel the current task run |
 | A | Choose a microphone and optional loopback input |
 | K | Add the speech provider's API key through a hidden prompt |
-| Tab | Switch between the menu and reading pane |
-| Q | Save an active recording and quit |
+| Tab / Shift-Tab | Move forward / backward between panes |
+| H | Show shortcuts and dashboard commands |
+| Q | Save recording, cancel an active task run, and quit |
 | / | Type a question, `ask QUESTION`, `search QUERY` (Exa), `approve c1`, or `dismiss c1` |
 | : | Open the command companion |
 
@@ -59,7 +67,7 @@ shows its recovery path. Speech captions arrive after a pause and provider
 processing. Copilot automatically streams a suggested answer when a completed
 speech turn contains a question; a timed fragment ending in `?` triggers immediately. Spoken commitments appear in their own pane;
 press `/` and type `approve c1` or `dismiss c1`. Approval queues a workspace task;
-run it from the command companion with `work`. Press `/` and type `ask QUESTION`
+press **T**, open the task, and press **G** to run it. Press `/` and type `ask QUESTION`
 for an on-demand suggestion grounded in recent speech and workspace evidence.
 You can also type a question directly, such as `What is AI Tinkerers?`.
 Outside questions automatically use Exa when relevant local evidence is missing
@@ -75,6 +83,88 @@ Dashboard Copilot uses OpenRouter and the `copilot_model` configuration setting
 `adversaria tmux` opens it inside a persistent tmux session (requires tmux);
 Ctrl-B then D detaches. `adversaria tui` explicitly opens the dashboard. Piped `adversaria` prints help.
 The command interface is available with `adversaria shell`.
+
+## Workspaces inside the dashboard
+
+To preload a rehearsal into the current workspace, run:
+
+```bash
+adversaria demo
+# Optional separate workspace:
+adversaria demo --workspace "Hackathon Demo"
+```
+
+This adds five **DEMO** tasks: a README draft, architecture diagram, research
+brief, approved slide outline, and a queued judge follow-up. Four prepared
+Markdown outputs and one context attachment are included. No API calls or
+recordings are made. Repeating the command preserves existing tasks, review
+decisions and edited artifacts. Provider and workspace settings stay unchanged.
+The research fixture uses prepared workspace evidence, not a fresh Exa search.
+
+Inside the dashboard, press **T** to refresh the task list. **Enter** opens an
+output, **V** approves a draft, and **E** requests a revision. The queued
+follow-up is available for an actual model run with **G**. You can inspect all
+prepared outputs without API credentials.
+
+Press **W** and select **Create workspace**, or choose an existing one with arrows
+and Enter. The workspace view shows context files, instructions, saved meeting
+count, and task counts. **F** attaches a UTF-8 text file under 2 MB; **I** edits
+instructions shared by Copilot and task generation. Saved meetings also supply
+context. Attachments are copied into the CLI's database; attach again to refresh
+an edited file.
+
+Press **N** to describe a task and choose **Write**, **Research**, **Visualize**,
+or **Present**. Research offers Exa web sources or workspace evidence only.
+Press **G** to generate the draft; captions and Copilot continue independently.
+**T** lists queued, running, failed, reviewable, and approved tasks.
+
+Open a task to read its streamed draft and saved Markdown artifact. **V** marks
+a reviewed draft approved. **E** records revision feedback and queues a new
+attempt; **G** runs it. Earlier artifacts remain on disk. Approval is a local
+review state, with no sending or publishing. Visualize saves Mermaid inside
+Markdown; **O** opens an actual rendered diagram in a local browser preview,
+with **Download SVG**. Documents and slide outlines also receive formatted
+previews. The bundled renderer works offline and sends no diagram content to
+a rendering service. Present saves Markdown slide sections and notes.
+
+From a shell, use `adversaria task preview 5`. Add `--no-open` to save the
+HTML without launching a browser. Previewing works for approved tasks as well
+as drafts, and preserves the original Markdown and review state.
+
+**P** pauses new runs in a workspace; an existing run continues. **X** requests
+cancellation and waits for the current network response. A cancelled partial
+draft is not accepted as an artifact. **Q** saves capture and waits for task
+cancellation before exiting. Stop and save a meeting before switching workspaces;
+you can browse and run tasks in the current workspace while recording.
+
+The dashboard uses **OpenRouter for tasks and Copilot**, plus **Exa for selected
+research tasks**. Tasks use `workspace_model` when set, otherwise the configured
+OpenRouter model (or the Copilot model if the command companion uses another
+provider). The command companion still supports its other provider options.
+
+The command bar also accepts:
+
+```text
+workspace Hackathon
+attach /path/to/project-brief.md
+source 1
+new write Draft the submission README
+new research --web Compare speech transcription services
+new visualize Map our meeting-to-task architecture
+run 1
+open 1
+revise 1 Include the latency measurements
+approve 1
+```
+
+Task and source IDs belong to the current workspace. `approve c1` approves a
+spoken commitment into the queue; `approve 1` approves the saved artifact for
+task 1. If its draft is not already open, the first artifact approval command
+opens it for review.
+
+![Workspace task review in the terminal](assets/terminal-workspace.svg)
+
+*Simulated workspace, commitment, and artifact used for an interface rehearsal.*
 
 ## Command companion
 

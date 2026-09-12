@@ -1,0 +1,2 @@
+# Preserve the upstream renderer bytes and its documented checksum.
+cli/adversaria_cli/vendor/mermaid.tiny.js -whitespace linguist-vendored

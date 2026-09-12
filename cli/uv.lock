@@ -13,6 +13,7 @@ source = { editable = "." }
 dependencies = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "httpx" },
+    { name = "markdown-it-py" },
     { name = "prompt-toolkit" },
     { name = "rich" },
     { name = "sounddevice" },
@@ -29,6 +30,7 @@ dev = [
 requires-dist = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'", specifier = ">=0.2" },
     { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "markdown-it-py", specifier = ">=3,<5" },
     { name = "prompt-toolkit", specifier = ">=3.0,<4" },
     { name = "rich", specifier = ">=13,<15" },
     { name = "sounddevice", specifier = ">=0.5,<1" },

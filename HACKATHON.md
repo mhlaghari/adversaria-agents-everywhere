@@ -29,10 +29,15 @@ OpenRouter, Exa and Codex credits. `cli/` and the `adversaria` launchers impleme
 cloud speech transcription, an interactive Copilot with caught commitments,
 persistent workspaces, background task runs, Exa source retrieval, Markdown/
 Mermaid artifacts and explicit review. The desktop implementation remains intact.
+The boxed dashboard now exposes workspace switching, context attachments,
+instructions, task creation, streamed drafts, and approve/revise actions directly.
+Recording and Copilot continue while workspace tasks run.
+Saved artifacts have a local browser preview (**O**): Mermaid diagrams render
+as SVG and can be downloaded. The renderer is bundled for offline use.
 OpenRouter is the default speech/model provider; Codex runs through the existing
 CLI login. Direct OpenAI API support is optional, not required by the credits path.
 
-Verified: 58 CLI tests, live OpenRouter catalogs, terminal approval flow, and a
+Verified: 93 CLI tests, live OpenRouter catalogs, terminal approval flow, and a
 synthetic Codex task producing an artifact awaiting review. Later provider checks
 also exercised OpenRouter speech/model calls and Exa research with synthetic
 speech and public queries; see [cli/PROVIDER_CHECK.md](cli/PROVIDER_CHECK.md).
@@ -66,6 +71,10 @@ First run downloads the Whisper model and a 3 GB local LLM (set `SMALL_MODELS=0`
 Needs uv and an OpenRouter key (`./adversaria setup`); see [cli/README.md](./cli/README.md).
 
 ```
-macOS:    ./adversaria record --copilot
-Windows:  .\adversaria.ps1 record --copilot
+macOS:    ./adversaria
+Windows:  .\adversaria.ps1
 ```
+
+In the dashboard: **W** selects a workspace, **F** attaches context, **N** creates
+a task, **T** opens tasks, **G** runs the selected task, and **V** approves a
+reviewed artifact. **E** records revision feedback for another run.
