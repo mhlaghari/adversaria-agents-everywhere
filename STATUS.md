@@ -1,10 +1,11 @@
 # STATUS (hackathon repo)
 
-> **Current presentation — 2026-09-12 15:57 GST: the story is now four slides.
-> Approved opening retained; remaining copy shortened in the same brand design.**
+> **Current presentation — 2026-09-12 16:01 GST: all current presentation
+> footers now say lagharilabs.com. Four-slide story and standalone exports refreshed.**
 
 | Presentation work | Status | Next step |
 | --- | --- | --- |
+| Website branding | Corrected | lagharilabs.com on all current slides; source, PDF, PPTX, HTML and PNG refreshed and checked |
 | Four-slide Adversaria story | Ready; checked | [PDF](marketing/adversaria-story/output/adversaria-story.pdf), [PowerPoint](marketing/adversaria-story/output/adversaria-story-short.pptx), [HTML](marketing/adversaria-story/output/adversaria-story.html); four-slide/page and visual checks passed; present |
 | Standalone pain-point slide | Preserved | Also included unchanged as slide 1 of the short story |
 | Original eight-slide PowerPoint | Archived backup | Current story PDF/HTML now select four slides |

@@ -1,6 +1,6 @@
 # Why I built Adversaria
 
-Four slides about Hamza's motivation for Adversaria, in the supplied Laghari Labs design. The approved pain-point slide opens the story:
+Four slides about Hamza's motivation for Adversaria, in the supplied [Laghari Labs](https://lagharilabs.com) design. The approved pain-point slide opens the story:
 
 > Every meeting adds hours of follow-up while my own projects wait.
 

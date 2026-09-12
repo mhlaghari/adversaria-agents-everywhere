@@ -40,7 +40,7 @@ text(lines[1], 88, 378, 1410, 125, size, 'Silkscreen', C.fire);
 rect(86, 520, 1432, 136, C.ink);
 rect(76, 510, 1432, 136, C.yellow, 4);
 text(lines[2], 88, 507, 1410, 130, size);
-text('LaghariLabs.io', 88, 796, 750, 48, 34);
+text('LaghariLabs.com', 88, 796, 750, 48, 34);
 text('Hamza / Lead AI Engineer', 900, 803, 608, 40, 24, 'JetBrains Mono', C.ink, 'right');
 
 const notes = 'Every meeting adds hours of follow-up while my own projects wait.\n\n'
@@ -83,7 +83,7 @@ const validation = await finalizePresentation({
   requiredNativeTableOwnerSlides: [], requiredNativeChartOwnerSlides: [],
   fontPolicy: { basis: 'design', families: ['Silkscreen', 'JetBrains Mono'] },
   verifyArtifactToolImport: true,
-  receiptPath: path.join(BUILD, 'validation.json'),
+  receiptPath: path.join(BUILD, path.basename(finalPath) + '.validation.json'),
 });
 
 const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');

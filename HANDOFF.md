@@ -1,8 +1,15 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
-> **CURRENT PRESENTATION — 2026-09-12 15:57 GST: Adversaria story reduced to
-> four slides, starting with the approved pain-point slide unchanged.**
+> **CURRENT PRESENTATION — 2026-09-12 16:01 GST: the current website is
+> lagharilabs.com. Four-slide story and standalone slide refreshed.**
 
+- Founder corrected the website to **lagharilabs.com**. Updated the current
+  story and standalone slide footers, authoring source, HTML, PDFs, PowerPoints
+  and standalone PNG. Current filenames and links stay the same. The root
+  README already linked to the correct domain; presentation README now does too.
+- Confirmed the new domain on all five current slide footers, with no former
+  domain in their native text or HTML. Re-rendered and checked the exported
+  slides; package/layout/import checks and browser overflow checks passed.
 - Current story: [PDF](marketing/adversaria-story/output/adversaria-story.pdf),
   [editable PowerPoint](marketing/adversaria-story/output/adversaria-story-short.pptx)
   and [offline HTML](marketing/adversaria-story/output/adversaria-story.html).

@@ -23,7 +23,7 @@ const add = (background) => { const s = { background, elements: [], notes: '' };
 const text = (s, value, x, y, w, h, size, color = C.ink, family = 'Silkscreen', align = 'left') => s.elements.push({ kind: 'text', value, x, y, w, h, size, color, family, align });
 const rect = (s, x, y, w, h, color, border = 0) => s.elements.push({ kind: 'rect', x, y, w, h, color, border });
 const footer = (s, dark = false) => {
-  text(s, 'LaghariLabs.io', 88, 796, 750, 48, 34, dark ? C.cream : C.ink);
+  text(s, 'LaghariLabs.com', 88, 796, 750, 48, 34, dark ? C.cream : C.ink);
   text(s, 'Hamza / Lead AI Engineer', 900, 803, 608, 40, 24, dark ? C.cream : C.ink, 'JetBrains Mono', 'right');
 };
 const source = '\n\nSources: Hamza’s brief, 12 September 2026, and repository README/CLI documentation. Design: the supplied Lagharilabs design/tokens.css and slides.jsx.';
