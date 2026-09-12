@@ -307,27 +307,35 @@ class RecordScreen(BaseScreen):
             return
         audio_path = meeting.audio_path
         mic_path = meeting.mic_path
-        try:
-            result = await asyncio.to_thread(
-                rt.client.transcribe,
-                audio_path=audio_path,
-                mic_audio_path=mic_path,
-                me_label=rt.config.user_name,
-                vocabulary=rt.config.custom_vocabulary,
-                diarize=rt.config.diarize,
-            )
-            transcript = result.get("text", "")
+        if rt.processing_lock.locked():
             self.query_one("#record-status", Static).update(
-                "Summarizing with the local LLM…"
+                "Queued — waiting for the previous recording to finish processing…"
             )
-            summary = await asyncio.to_thread(
-                rt.client.summarize,
-                transcript,
-                template_name=rt.config.default_prompt_template,
-                model=rt.config.ollama_model,
-                output_language=rt.config.summary_language,
-                meeting_date=meeting.recorded_at[:10] or None,
-            )
+        try:
+            async with rt.processing_lock:
+                self.query_one("#record-status", Static).update(
+                    "Transcribing & summarizing…"
+                )
+                result = await asyncio.to_thread(
+                    rt.client.transcribe,
+                    audio_path=audio_path,
+                    mic_audio_path=mic_path,
+                    me_label=rt.config.user_name,
+                    vocabulary=rt.config.custom_vocabulary,
+                    diarize=rt.config.diarize,
+                )
+                transcript = result.get("text", "")
+                self.query_one("#record-status", Static).update(
+                    "Summarizing with the local LLM…"
+                )
+                summary = await asyncio.to_thread(
+                    rt.client.summarize,
+                    transcript,
+                    template_name=rt.config.default_prompt_template,
+                    model=rt.config.ollama_model,
+                    output_language=rt.config.summary_language,
+                    meeting_date=meeting.recorded_at[:10] or None,
+                )
         except Exception as exc:
             meeting.status = "needs_transcribe"
             rt.store.update_meeting(meeting)

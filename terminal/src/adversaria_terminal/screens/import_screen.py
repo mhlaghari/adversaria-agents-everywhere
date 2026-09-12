@@ -87,10 +87,18 @@ class ImportScreen(BaseScreen):
     @work(exclusive=True)
     async def _import(self, path: Path) -> None:
         rt = self.app.rt
-        try:
-            note = await asyncio.to_thread(
-                self._pipeline, str(path.resolve())
+        if rt.processing_lock.locked():
+            self.query_one("#import-title", Static).update(
+                f"Queued [bold]{path.name}[/bold] — waiting for other processing to finish…"
             )
+        try:
+            async with rt.processing_lock:
+                self.query_one("#import-title", Static).update(
+                    f"Importing [bold]{path.name}[/bold]…"
+                )
+                note = await asyncio.to_thread(
+                    self._pipeline, str(path.resolve())
+                )
         except Exception as exc:
             self.query_one("#import-title", Static).update("Import audio file")
             self.notify(str(exc), severity="error")

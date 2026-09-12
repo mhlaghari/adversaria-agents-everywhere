@@ -237,15 +237,17 @@ class MeetingDetailScreen(BaseScreen):
             self.notify("This meeting has no transcript to summarize.", severity="warning")
             return
         self.notify(f"Re-summarizing with “{template_name}”…")
+        rt = self.app.rt
         try:
-            summary = await asyncio.to_thread(
-                self.app.rt.client.summarize,
-                meeting.transcript,
-                template_name=template_name,
-                model=self.app.rt.config.ollama_model,
-                output_language=self.app.rt.config.summary_language,
-                meeting_date=meeting.recorded_at[:10] or None,
-            )
+            async with rt.processing_lock:
+                summary = await asyncio.to_thread(
+                    rt.client.summarize,
+                    meeting.transcript,
+                    template_name=template_name,
+                    model=rt.config.ollama_model,
+                    output_language=rt.config.summary_language,
+                    meeting_date=meeting.recorded_at[:10] or None,
+                )
         except Exception as exc:
             self.notify(str(exc), severity="error")
             return
@@ -275,23 +277,24 @@ class MeetingDetailScreen(BaseScreen):
         self.notify("Re-transcribing from the saved audio…")
         rt = self.app.rt
         try:
-            result = await asyncio.to_thread(
-                rt.client.transcribe,
-                audio_path=meeting.audio_path,
-                mic_audio_path=meeting.mic_path,
-                me_label=rt.config.user_name,
-                vocabulary=rt.config.custom_vocabulary,
-                diarize=rt.config.diarize,
-            )
-            transcript = result.get("text", "")
-            summary = await asyncio.to_thread(
-                rt.client.summarize,
-                transcript,
-                template_name=rt.config.default_prompt_template,
-                model=rt.config.ollama_model,
-                output_language=rt.config.summary_language,
-                meeting_date=meeting.recorded_at[:10] or None,
-            )
+            async with rt.processing_lock:
+                result = await asyncio.to_thread(
+                    rt.client.transcribe,
+                    audio_path=meeting.audio_path,
+                    mic_audio_path=meeting.mic_path,
+                    me_label=rt.config.user_name,
+                    vocabulary=rt.config.custom_vocabulary,
+                    diarize=rt.config.diarize,
+                )
+                transcript = result.get("text", "")
+                summary = await asyncio.to_thread(
+                    rt.client.summarize,
+                    transcript,
+                    template_name=rt.config.default_prompt_template,
+                    model=rt.config.ollama_model,
+                    output_language=rt.config.summary_language,
+                    meeting_date=meeting.recorded_at[:10] or None,
+                )
         except Exception as exc:
             self.notify(str(exc), severity="error")
             return

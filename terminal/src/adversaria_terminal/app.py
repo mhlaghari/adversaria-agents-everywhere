@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import sys
 from pathlib import Path
@@ -57,6 +58,14 @@ class Runtime:
     client: ServiceClient
     store: Store
     data_dir: Path
+    # One transcribe/summarize job at a time, app-wide. Each screen that runs
+    # the pipeline (RecordScreen, ImportScreen, MeetingDetailScreen's
+    # retry/re-summarize) is a fresh instance per push, so a per-screen
+    # `@work(exclusive=True)` never sees a sibling job — recording four short
+    # meetings back-to-back could fire four concurrent transcribe+summarize
+    # HTTP round trips, stacking concurrent Ollama contexts (and the resident
+    # Whisper model) in GPU memory. This lock is the single app-wide gate.
+    processing_lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
 
 
 def build_runtime(data_dir: str | None = None) -> Runtime:

@@ -28,6 +28,22 @@ desktop frontend or Rust backend; pure Python (textual + httpx + soundcard).
 
 ## Last session fixes (2026-09-12)
 
+- **Recording 4 short meetings back-to-back froze/crashed the whole laptop.**
+  Root cause: `RecordScreen`, `MeetingDetailScreen`, and `ImportScreen` are all
+  pushed as a **fresh instance per navigation** (`screens/base.py:68` etc.), so
+  their `@work(exclusive=True)` transcribe/summarize workers only ever see
+  themselves — nothing serialized the pipeline across separate recordings.
+  Stopping recording #2 before recording #1 finished processing fired a second
+  concurrent transcribe+summarize HTTP round trip; the server's `_WHISPER_LOCK`
+  serializes Whisper, but `summarizer.py` has no equivalent lock around Ollama,
+  so concurrent Ollama contexts could stack up alongside the resident Whisper
+  model and exhaust GPU memory badly enough to take the whole machine down, not
+  just the app. **Fix:** added `Runtime.processing_lock` (an `asyncio.Lock`,
+  `app.py`) — one transcribe/summarize job at a time, app-wide. Applied at
+  every call site: `RecordScreen._process`, `MeetingDetailScreen._do_retry` /
+  `_do_resummarize`, `ImportScreen._import` (`record.py`, `detail.py`,
+  `import_screen.py`). Recording/capture itself is still unblocked — only the
+  transcribe+summarize round trip queues.
 - **`test_boot_and_navigate` crash root cause:** `MeetingsScreen._render(self,
   query)` overrode Textual's reserved `Widget._render()`. The compositor called
   it with no args during painting, it executed the table-rebuild and returned
