@@ -1,0 +1,273 @@
+name: Windows release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Updater channel to build
+        required: true
+        default: beta
+        type: choice
+        options: [beta, stable]
+      bundle_cuda:
+        description: >-
+          Bundle the CUDA runtime. OFF by default — the result (~2.4 GB) exceeds
+          the NSIS ~2 GB ceiling and makensis WILL fail. See LESSONS_LEARNED.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Guarded to the PUBLIC repo, where GitHub-hosted runners are free. The
+    # private workspace carries an identical copy of this file and would
+    # otherwise bill real minutes at the Windows 2x rate.
+    if: github.repository == 'LaghariLabs/adversaria'
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          working-directory: python-service
+
+      # MSVC is the default host toolchain on windows-latest; the -gnu triple
+      # cannot link the WASAPI/COM bindings the audio layer uses.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          cd python-service
+          uv sync --frozen --extra dev ${{ inputs.bundle_cuda && '--extra cuda' || '' }}
+
+      # tauri-build refuses to run while a declared bundle resource is
+      # missing, and the sidecar is only frozen AFTER these gates — so stub
+      # the path exactly like quality.yml does. The real freeze below
+      # replaces the stub (--noconfirm overwrites dist/). This step was the
+      # workflow's first-run failure: the gates died on
+      # "resource path ..\python-service\dist\adversaria-service doesn't exist".
+      - name: Stub bundled sidecar resources
+        shell: bash
+        run: mkdir -p python-service/dist/adversaria-service
+
+      # Same gates as the macOS candidate. cargo's are the load-bearing ones
+      # here: the WASAPI capture path is cfg(windows) and cannot be compiled,
+      # linted, or tested on the macOS release runner at all.
+      - name: Verify source gates
+        run: |
+          npm run build
+          npm test
+          npm audit --omit=dev --audit-level=high
+          cd python-service
+          uv run --frozen ruff check .
+          uv run --frozen pytest -q
+          cd ../src-tauri
+          cargo fmt --check
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo test --all-targets
+
+      # PyInstaller does not cross-compile — this is the whole reason the
+      # Windows installer cannot be produced on the macOS release runner.
+      - name: Freeze the ML service sidecar
+        working-directory: python-service
+        env:
+          ADVERSARIA_BUNDLE_CUDA: ${{ inputs.bundle_cuda && '1' || '0' }}
+        run: uv run --with pyinstaller pyinstaller adversaria-service-windows.spec --noconfirm
+
+      # A successful PyInstaller command proves only that files were collected.
+      # The first real Windows machine exposed several failures before the
+      # process bound its port, and a packaged service that has never answered
+      # /health is not a release candidate.
+      - name: Smoke the frozen ML service
+        working-directory: python-service
+        shell: pwsh
+        env:
+          # Transcribe the smoke fixture with `tiny` on CPU int8: the gate proves
+          # the frozen stack can decode and transcribe, not that a particular
+          # model is accurate, and the shipped default (large-v3-turbo, ~1.6 GB)
+          # would cost minutes of runner time per build. `tiny` is not in the
+          # curated registry, so it passes straight through to faster-whisper
+          # (src/transcriber.py::WhisperTranscriber.__init__). Setting
+          # WHISPER_MODEL also puts _init_transcriber on its env-override path,
+          # which skips the "is a curated model downloaded?" gate.
+          WHISPER_MODEL: tiny
+          WHISPER_DEVICE: cpu
+          WHISPER_COMPUTE_TYPE: int8
+          # hf_hub's tqdm bars go to stderr; silencing them keeps the CI log
+          # readable and keeps pwsh from having to reason about native stderr.
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"
+        run: |
+          # faster-whisper loads with `local_files_only=True` (downloads are
+          # reserved for the app's pinned model_setup pipeline), so the weights
+          # must already be in the HF cache before the service starts. ~75 MB.
+          Write-Host 'Fetching the smoke Whisper model (Systran/faster-whisper-tiny)...'
+          uv run --frozen python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-tiny')"
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch the smoke Whisper model." }
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+          $listener.Stop()
+          $stdout = Join-Path $env:RUNNER_TEMP 'adversaria-service-smoke.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'adversaria-service-smoke.stderr.log'
+          $exe = Join-Path $PWD 'dist\adversaria-service\adversaria-service.exe'
+          $service = Start-Process -FilePath $exe `
+            -ArgumentList @('--host', '127.0.0.1', '--port', "$port") `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          Write-Host "Smoking $exe on 127.0.0.1:$port"
+          # A frozen onedir build imports the whole ML stack (torch, transformers,
+          # sherpa-onnx, av) off a cold CI filesystem before uvicorn binds. The
+          # first version of this gate allowed ~180 s and failed at 181 s while the
+          # service was starting perfectly well, so the budget is generous and
+          # deadline-based rather than a count of attempts.
+          $deadline = [Diagnostics.Stopwatch]::StartNew()
+          $budget = [TimeSpan]::FromMinutes(8)
+          $ready = $false
+          $lastError = 'no attempt completed'
+          try {
+            while ($deadline.Elapsed -lt $budget) {
+              if ($service.HasExited) {
+                throw "Frozen service exited before answering /health (exit code $($service.ExitCode)). See the captured output below."
+              }
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5
+                if ($health.status) {
+                  $ready = $true
+                  Write-Host "Frozen service /health: $($health.status) after $([int]$deadline.Elapsed.TotalSeconds)s"
+                  Write-Host "  whisper_model=$($health.whisper_model) transcriber_state=$($health.transcriber_state)"
+                  break
+                }
+                $lastError = "200 but no status field: $($health | ConvertTo-Json -Compress)"
+              } catch {
+                $lastError = $_.Exception.Message
+              }
+              Start-Sleep -Seconds 5
+            }
+            if (-not $ready) {
+              # Distinguish "never bound the port" from "bound but /health fails" —
+              # they have completely different causes and the log alone is ambiguous
+              # because src/server.py filters /health out of the access log.
+              $listening = $false
+              try {
+                $probe = [Net.Sockets.TcpClient]::new()
+                $listening = $probe.ConnectAsync('127.0.0.1', $port).Wait(3000)
+                $probe.Dispose()
+              } catch { $listening = $false }
+              throw "Frozen service did not answer /health within $([int]$budget.TotalMinutes) minutes. TCP port open: $listening. Last error: $lastError"
+            }
+
+            # Answering /health is not the same as being able to transcribe: the
+            # service binds its port while the transcriber is still loading, and
+            # /transcribe 503s ("transcriber_loading") in that window. Wait for
+            # transcriber_state=ready; `missing`/`error` are terminal, so fail on
+            # them at once instead of burning the whole budget.
+            $loadBudget = [TimeSpan]::FromMinutes(5)
+            $loadDeadline = [Diagnostics.Stopwatch]::StartNew()
+            while ($health.transcriber_state -ne 'ready' -and $loadDeadline.Elapsed -lt $loadBudget) {
+              if ($service.HasExited) {
+                throw "Frozen service exited while loading the transcriber (exit code $($service.ExitCode))."
+              }
+              if ($health.transcriber_state -eq 'missing' -or $health.transcriber_state -eq 'error') {
+                throw "Frozen service transcriber_state=$($health.transcriber_state): $($health.transcriber_detail)"
+              }
+              Start-Sleep -Seconds 5
+              try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5 } catch {}
+            }
+            if ($health.transcriber_state -ne 'ready') {
+              throw "Frozen service transcriber never reached 'ready' within $([int]$loadBudget.TotalMinutes) minutes (last state: $($health.transcriber_state))."
+            }
+            Write-Host "Transcriber ready after $([int]$loadDeadline.Elapsed.TotalSeconds)s (model $($health.whisper_model))"
+
+            # The real gate: a frozen build that boots but cannot transcribe is
+            # not a release candidate. /transcribe takes JSON with an on-disk
+            # path — the service and the app are on the same machine, so audio is
+            # never uploaded (src/server.py::transcribe, src/models.py
+            # ::TranscribeRequest). It is NOT a multipart upload. ConvertTo-Json
+            # (not string interpolation) is what escapes the Windows backslashes
+            # in the path.
+            $wav = Join-Path $PWD 'tests\fixtures\sample-5s.wav'
+            if (-not (Test-Path $wav)) { throw "Smoke fixture missing from the checkout: $wav" }
+            $body = @{ audio_path = "$wav"; diarize = $false } | ConvertTo-Json -Compress
+            $result = Invoke-RestMethod -Uri "http://127.0.0.1:$port/transcribe" `
+              -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 600
+            $text = ("$($result.text)").Trim()
+            if ($text.Length -lt 10) {
+              throw "Frozen service /transcribe returned no usable text: $($result | ConvertTo-Json -Compress)"
+            }
+            Write-Host "Frozen service /transcribe: $text"
+          } finally {
+            if (-not $service.HasExited) { Stop-Process -Id $service.Id -Force }
+            Write-Host '--- service stdout ---'
+            if (Test-Path $stdout) { Get-Content $stdout }
+            Write-Host '--- service stderr ---'
+            if (Test-Path $stderr) { Get-Content $stderr }
+          }
+
+      # tauri.windows.conf.json is merged automatically on this target: it
+      # selects the NSIS bundle and drops the Apple-only rapid-mlx resource.
+      # The channel config only overrides the updater endpoint.
+      # Updater-artifact signing needs the private key in repo secrets. When
+      # it's absent (it has only ever lived on the macOS release machine),
+      # build an installer-only candidate instead of dying at the last step:
+      # office-box acceptance needs the exe, not auto-update artifacts. The
+      # first signed run died here with "failed to decode secret key".
+      # This step must stay on the default PowerShell: under `shell: bash`,
+      # openssl-sys rebuilds its vendored OpenSSL through Git-Bash's broken
+      # core_perl ("BEGIN failed" in IPC/Cmd.pm) — round 4's failure.
+      - name: Build the NSIS installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $extra = @()
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            Write-Host "==> No updater signing key in repo secrets - building an installer-only candidate (no auto-update artifacts)."
+            Set-Content -Path no-updater.conf.json -Value '{"bundle":{"createUpdaterArtifacts":false}}' -Encoding ascii
+            $extra = @('--config', 'no-updater.conf.json')
+          }
+          npm run tauri build -- --config "src-tauri/tauri.${{ inputs.channel }}.conf.json" $extra
+
+      - name: Upload immutable candidate for clean-machine acceptance
+        uses: actions/upload-artifact@v7
+        with:
+          name: adversaria-windows-${{ inputs.channel }}-${{ github.sha }}
+          # `createUpdaterArtifacts: true` (tauri.conf.json) re-uses the NSIS
+          # installer AS the update bundle, so the updater pair is
+          # `-setup.exe` + `-setup.exe.sig`. The `.nsis.zip` shape this used to
+          # collect belongs to `"v1Compatible"` and is never produced here —
+          # the .sig that scripts/publish-release.sh needs for the
+          # windows-x86_64 manifest entry was silently not being uploaded
+          # (2026-08-03).
+          # `error`, not `warn`: publish-release.sh cannot write that manifest
+          # entry without the .sig, so a candidate missing it must fail here
+          # rather than at publish time. The tradeoff is that a keyless run —
+          # no TAURI_SIGNING_PRIVATE_KEY in secrets, which produces the exe
+          # alone — now fails this step; sign the exe with
+          # `npx tauri signer sign <exe>` and re-upload, using the same key the
+          # app pins. (The build step above already fails if no installer was
+          # produced.)
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+          if-no-files-found: error
+          retention-days: 14

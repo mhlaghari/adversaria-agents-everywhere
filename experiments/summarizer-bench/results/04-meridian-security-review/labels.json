@@ -1,0 +1,6 @@
+{
+  "A": "qwen3_4b__mapreduce",
+  "B": "qwen3_4b__single",
+  "C": "qwen3_0.6b__single",
+  "D": "qwen3_0.6b__mapreduce"
+}

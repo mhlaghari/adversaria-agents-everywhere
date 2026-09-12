@@ -1,0 +1,11 @@
+Me: David, you've had the questionnaire answers for a week — where did we land?
+Them: Mostly green. The on-site processing story holds up. Three open threads: single sign-on, audit logging, and a written statement on data boundaries.
+Me: Take them in order. For SSO, you're an Azure shop, right?
+Them: Azure AD across the org. If your app can do SSO against it, that closes the account-sprawl concern from compliance.
+Me: We can integrate against Azure AD. I'll confirm the exact protocol details in the audit-log spec I owe you anyway.
+Them: On audit logs — compliance wants exportable logs, monthly at minimum. Who accessed which patient record and when.
+Me: Monthly export is straightforward. I'll write up the format and retention so your compliance team can sign off on paper rather than on a demo.
+Them: Last one is the data-boundary statement. We need it in writing that nothing leaves the clinic LAN — our board asks for that sentence specifically.
+Me: You'll have it in the SOC 2 readiness summary. It's an honest sentence for us, which is why this partnership works.
+Them: Then from my side we're nearly there. Get me those two documents and I'll set up staging tenant access for your team in parallel.
+Me: Deal. Documents by Wednesday, and we aim to unblock the pilot start next week.

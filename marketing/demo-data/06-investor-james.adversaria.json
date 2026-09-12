@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "meeting": {
+    "title": "Investor catch-up — James Whitfield",
+    "recorded_at": "2026-07-16T13:00:00+00:00",
+    "duration_seconds": 120.5,
+    "template_used": "general",
+    "transcript": "Me: James, good to catch up. Quick shape of the last two months: beta is at forty active teams, retention is holding, and the Meridian pilot should start next week.\nThem: Forty teams from thirty-one last time — steady. What's your read on why retained users stay?\nMe: The weekly digest, surprisingly. People who get value out of the Monday summary keep the habit. It's become our stickiest surface.\nThem: Then make it the wedge. On Meridian — is that revenue or a lighthouse?\nMe: Lighthouse first, revenue second. Healthcare compliance is brutal to earn, but once earned it's a moat and a reference that closes the next five deals.\nThem: Agreed, as long as it doesn't eat the whole roadmap. What do you need from me?\nMe: Two things. A monthly update cadence so these catch-ups compound, and intros to design-partner prospects in regulated spaces.\nThem: Done on both. Helios Legal and Cardinal Wealth are the two I'd start with — I'll make the intros this week, you follow up.\nMe: Perfect. First monthly update lands with July metrics next week.",
+    "transcript_turns": [
+      {
+        "speaker": "Me",
+        "text": "James, good to catch up. Quick shape of the last two months: beta is at forty active teams, retention is holding, and the Meridian pilot should start next week.",
+        "start": 4.0,
+        "end": 16.08
+      },
+      {
+        "speaker": "Them",
+        "text": "Forty teams from thirty-one last time — steady. What's your read on why retained users stay?",
+        "start": 17.28,
+        "end": 23.95
+      },
+      {
+        "speaker": "Me",
+        "text": "The weekly digest, surprisingly. People who get value out of the Monday summary keep the habit. It's become our stickiest surface.",
+        "start": 26.05,
+        "end": 34.8
+      },
+      {
+        "speaker": "Them",
+        "text": "Then make it the wedge. On Meridian — is that revenue or a lighthouse?",
+        "start": 36.0,
+        "end": 41.83
+      },
+      {
+        "speaker": "Me",
+        "text": "Lighthouse first, revenue second. Healthcare compliance is brutal to earn, but once earned it's a moat and a reference that closes the next five deals.",
+        "start": 43.93,
+        "end": 54.35
+      },
+      {
+        "speaker": "Them",
+        "text": "Agreed, as long as it doesn't eat the whole roadmap. What do you need from me?",
+        "start": 55.55,
+        "end": 62.22
+      },
+      {
+        "speaker": "Me",
+        "text": "Two things. A monthly update cadence so these catch-ups compound, and intros to design-partner prospects in regulated spaces.",
+        "start": 64.32,
+        "end": 71.82
+      },
+      {
+        "speaker": "Them",
+        "text": "Done on both. Helios Legal and Cardinal Wealth are the two I'd start with — I'll make the intros this week, you follow up.",
+        "start": 73.02,
+        "end": 83.02
+      },
+      {
+        "speaker": "Me",
+        "text": "Perfect. First monthly update lands with July metrics next week.",
+        "start": 85.12,
+        "end": 89.28
+      }
+    ],
+    "summary": "### Overview\nCatch-up with James Whitfield. Beta grew from 31 to 40 active teams with\nretention holding; the weekly digest has emerged as the stickiest surface.\nMeridian is positioned as lighthouse-first. James will intro two regulated-space\ndesign-partner prospects: Helios Legal and Cardinal Wealth.\n\n### Key points\n- 40 active beta teams (up from 31); retention stable.\n- The Monday digest drives habit — candidate wedge feature.\n- Meridian framed as compliance moat + reference account, not near-term revenue.\n\n### Decisions\n- Move to a monthly written investor-update cadence.\n- Pursue Helios Legal and Cardinal Wealth as design partners via James.\n\n### Action items\n- Send July metrics update (Hamza)\n- Follow up on the Helios Legal intro (Hamza)",
+    "attendees": [
+      "James Whitfield"
+    ],
+    "user_notes": "",
+    "link": "",
+    "tags": [
+      {
+        "label": "Investor",
+        "color": "orange"
+      }
+    ],
+    "action_items": [
+      {
+        "ord": 0,
+        "text": "Send July metrics update to James",
+        "assignee": "Me",
+        "due": "2026-07-22",
+        "done": false
+      },
+      {
+        "ord": 1,
+        "text": "Follow up on the Helios Legal intro",
+        "assignee": "Me",
+        "due": "2026-07-24",
+        "done": false
+      }
+    ]
+  }
+}

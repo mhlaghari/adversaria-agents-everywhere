@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adversaria — Product Success Overview &amp; Launch Plan</title>
+<style>
+  :root{
+    --accent:#5b4bd6;
+    --accent-soft:#efedfb;
+    --ink:#1c1e26;
+    --muted:#5d6473;
+    --line:#e4e6ee;
+    --bg:#ffffff;
+    --bg-alt:#f7f8fc;
+    --good:#1f8a52;
+    --bad:#c0392b;
+    --warn:#b8860b;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--bg-alt);
+    line-height:1.62;
+    font-size:16px;
+  }
+  .wrap{max-width:820px;margin:0 auto;padding:48px 24px 96px;background:var(--bg);}
+  header.hero{
+    border-bottom:3px solid var(--accent);
+    padding-bottom:26px;margin-bottom:34px;
+  }
+  .eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:var(--accent);font-weight:700;}
+  h1{font-size:33px;line-height:1.15;margin:10px 0 8px;letter-spacing:-.5px;}
+  .sub{color:var(--muted);font-size:16px;margin:0;}
+  .meta{margin-top:14px;font-size:13px;color:var(--muted);}
+  .meta b{color:var(--ink);}
+  h2{
+    font-size:24px;margin:54px 0 14px;padding-top:14px;
+    border-top:1px solid var(--line);letter-spacing:-.3px;
+  }
+  h3{font-size:18px;margin:30px 0 8px;color:var(--ink);}
+  h4{font-size:15px;margin:20px 0 6px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;}
+  p{margin:10px 0;}
+  a{color:var(--accent);}
+  ul,ol{margin:10px 0 10px 4px;padding-left:22px;}
+  li{margin:5px 0;}
+  strong{color:var(--ink);}
+  code{background:var(--accent-soft);padding:1px 6px;border-radius:5px;font-size:13.5px;font-family:"SF Mono",Menlo,Consolas,monospace;}
+  blockquote{
+    margin:16px 0;padding:12px 18px;background:var(--accent-soft);
+    border-left:4px solid var(--accent);border-radius:0 8px 8px 0;color:var(--ink);
+  }
+  blockquote p{margin:4px 0;}
+  table{border-collapse:collapse;width:100%;margin:18px 0;font-size:13.5px;}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--accent);color:#fff;font-weight:600;font-size:12.5px;}
+  tbody tr:nth-child(even){background:var(--bg-alt);}
+  caption{caption-side:bottom;color:var(--muted);font-size:12px;padding-top:8px;text-align:left;}
+  .toc{
+    background:var(--bg-alt);border:1px solid var(--line);border-radius:12px;
+    padding:20px 26px;margin:8px 0 10px;
+  }
+  .toc h2{border:0;margin:0 0 10px;padding:0;font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+  .toc ol{columns:2;column-gap:32px;margin:0;padding-left:20px;font-size:14px;}
+  .toc a{text-decoration:none;}
+  .toc a:hover{text-decoration:underline;}
+  .callout{
+    border:1px solid var(--line);border-left:4px solid var(--accent);
+    background:var(--bg-alt);border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0;
+  }
+  .callout.verdict{border-left-color:var(--good);}
+  .callout.risk{border-left-color:var(--bad);}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;letter-spacing:.03em;}
+  .pill.yes{background:#e3f5ea;color:var(--good);}
+  .pill.no{background:#fbe6e3;color:var(--bad);}
+  .pill.warn{background:#f9f0d8;color:var(--warn);}
+  .good{color:var(--good);font-weight:600;}
+  .bad{color:var(--bad);font-weight:600;}
+  .warn{color:var(--warn);font-weight:600;}
+  .small{font-size:13px;color:var(--muted);}
+  hr{border:0;border-top:1px solid var(--line);margin:34px 0;}
+  .footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);}
+  @media print{
+    body{background:#fff;font-size:11.5pt;}
+    .wrap{max-width:100%;padding:0;}
+    h2{break-after:avoid;}
+    table{break-inside:avoid;font-size:9.5pt;}
+    .toc{break-inside:avoid;}
+    a{color:#000;text-decoration:none;}
+  }
+  @media(max-width:640px){
+    .toc ol{columns:1;}
+    h1{font-size:26px;}
+    .wrap{padding:28px 16px 60px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Laghari Labs · Product Success Overview</div>
+  <h1>Adversaria — Launch Plan &amp; Strategy</h1>
+  <p class="sub">The bot-free, on-device meeting notetaker that physically can't leak. A decision-ready plan for a solo founder.</p>
+  <p class="meta"><b>Version:</b> v0.3.12 · <b>Compiled:</b> 27 June 2026 · <b>Audience:</b> Solo founder · <b>Budget:</b> &lt;$2,000 · <b>Window:</b> public launch in 2–4 weeks</p>
+</header>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#s1">Executive Summary</a></li>
+    <li><a href="#s2">Is the Product Good?</a></li>
+    <li><a href="#s3">360° Competitive Landscape</a></li>
+    <li><a href="#s4">Positioning &amp; Messaging</a></li>
+    <li><a href="#s5">Pricing Strategy</a></li>
+    <li><a href="#s6">Do You Need Beta Testers?</a></li>
+    <li><a href="#s7">The Launch Playbook</a></li>
+    <li><a href="#s8">Risks &amp; How The Plan Survives</a></li>
+    <li><a href="#s9">90-Day Success Metrics</a></li>
+    <li><a href="#s10">Sources</a></li>
+  </ol>
+</nav>
+
+<!-- ============ 1 ============ -->
+<h2 id="s1">1. Executive Summary</h2>
+
+<div class="callout verdict">
+<p><strong>Verdict: the product is genuinely good; the launch plan as briefed is not — yet.</strong> Adversaria is an impressive solo-founder v1 that ships, today and locally, the exact feature set its two closest rivals still gate or roadmap (on-device diarization, cross-meeting RAG, action items) plus the strictest privacy defaults in the category (SQLCipher at-rest, Touch ID / Windows Hello, per-meeting PIN, audio auto-deleted). But the briefed go-to-market aims its strongest weapon at the buyer least likely to pay for it, tries to charge before it can bill, and leads with a claim five funded rivals already make.</p>
+</div>
+
+<p><strong>The single recommended strategy:</strong> Launch <strong>free-only</strong> in 4 weeks (soft date, gated on readiness — not the calendar) to harvest the unusually open switch market (59% of users say they'll change notetakers within 12 months). Lead with the <em>compliance gate</em> — "no bot joins, nothing leaves your machine" — not the privacy virtue, and open the Alex Bilzerian / Otter incident as the cold open. Keep broad privacy-conscious prosumers and the uncontested Arabic/RTL audience as the free top-of-funnel, but point the <em>paid</em> wedge at the buyer for whom privacy is a purchase-unblocker: regulated, client-facing solos and small firms (law, healthcare, finance, consulting). Defer Pro billing by ~30–60 days until a Merchant-of-Record + offline license path is built and tested; capture intent via a waitlist now.</p>
+
+<h4>Top 5 actions for the next 2–4 weeks</h4>
+<ol>
+  <li><strong>Clear the four hard launch gates</strong> (everything else slips): (1) macOS notarized, clean-machine install with zero terminal steps; (2) first-run wizard defaults no-GPU users straight to the Groq key path; (3) Groq long-meeting rate-limit (~6,000 TPM) fails <em>loud</em> with chunking/a clear message, never silently; (4) a capture-path QA matrix + a handful of Rust integration tests on the audio/storage boundary.</li>
+  <li><strong>Open-source one verifiable component</strong> (the read-only MCP server or the capture/egress core) — this converts your single biggest liability (closed-source vs two MIT rivals) into a Hacker News trust token and a discovery asset.</li>
+  <li><strong>Rewrite every privacy claim to be literally true</strong> and publish an honest data-flow page enumerating each egress (updater, in-app feedback, Google OAuth, MCP, Groq). Make the updater disclosed and disable-able so the "firewall test" actually passes. Never say "HIPAA / bar-approved" — say "designed for confidentiality."</li>
+  <li><strong>Run a private beta of 30–50</strong> on the auto-updater to harden the untested capture path before any public spike; exit criterion = crash-free first run + first summary unaided on a clean Mac and a clean Windows box.</li>
+  <li><strong>Stage the launch as two peaks:</strong> Show HN (Tue–Thu 8–10am PT) as the <em>primary</em> motion, Product Hunt 2–4 days later (12:01am PT, self-hunt); file AlternativeTo / SaaSHub / Privacy Guides submissions now so they index before launch day.</li>
+</ol>
+
+<!-- ============ 2 ============ -->
+<h2 id="s2">2. Is the Product Good?</h2>
+
+<p><strong>Yes — as an artifact it is a strong, differentiated v1 that out-ships funded competitors on local feature depth and privacy defaults.</strong> Three things make it genuinely differentiated, and three things will hurt it at launch unless addressed.</p>
+
+<h4>What makes it genuinely differentiated</h4>
+<ol>
+  <li><strong>Deepest <em>shipped</em> local feature set in the niche.</strong> Diarization + cross-meeting RAG ("Ask-All") + action-item extraction work today, where Meetily lists diarization and "chat with your meetings" as "Soon" and Hyprnote gates speaker ID behind its $8+/mo cloud. A present-tense, demonstrable delta — not a roadmap claim.</li>
+  <li><strong>Strictest privacy <em>defaults</em>, not privacy <em>marketing</em>.</strong> Encryption-at-rest + biometric unlock + per-meeting PIN + audio deleted after transcription. The cloud field can't match it architecturally; the local field (Meetily, Hyprnote) doesn't ship it — Hyprnote deliberately <em>keeps</em> audio on disk as plaintext.</li>
+  <li><strong>Arabic/RTL-native UI on Windows <em>and</em> Mac today.</strong> A real RTL interface (not just Whisper language coverage) plus same-day Windows support serves a global/MENA base and the privacy-conscious Windows user the funded leaders structurally ignore (Granola is cloud/US-first; Hyprnote is macOS-only until Q2 2026).</li>
+</ol>
+
+<h4>What is most likely to hurt it at launch</h4>
+<ol>
+  <li><strong>Closed-source against MIT incumbents on the shared wedge.</strong> The privacy-maximalist who wants local can already get Meetily/Hyprnote for $0 <em>with auditable code</em>. Asking that buyer to trust a closed binary's privacy claim is the opposite of their instinct. <em>(Mitigation: open-source one component — baked into the plan.)</em></li>
+  <li><strong>Wrong beachhead for monetization.</strong> "Privacy-conscious prosumers, global" is the segment where privacy is a stated-but-unpaid preference (#3 driver at 33%, ~7% measured premium, ATT shows ~96% take free privacy but ~nobody pays). Privacy converts to dollars only as a compliance gate for regulated pros. <em>(Mitigation: reposition — see §4.)</em></li>
+  <li><strong>Charging in 2–4 weeks with no way to charge, and a free path that breaks under load.</strong> No hosted billing exists; the Groq free tier's ~6,000 TPM ceiling fails on exactly the long meetings prosumers test with; the untested Rust capture path turns any dropped recording into instant churn. <em>(Mitigation: launch free-only + the four gates.)</em></li>
+</ol>
+
+<h4>SWOT (honest)</h4>
+<table>
+  <thead><tr><th>Strengths</th><th>Weaknesses</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Exceptional shipped breadth for a solo v1 (capture+diarization+RAG+action items+encryption+biometric+calendar+recap+MCP+signed .dmg+auto-updater). Strictest privacy architecture in the field. Groq BYO-key removes the no-GPU blocker. Cross-platform <em>now</em> + Arabic/RTL.</td>
+      <td>Closed-source where auditability is the trust currency. No team features (single-user SQLite). No hosted billing infra. Rust backend has zero automated tests — fatal for a capture app. macOS notarization unfinished; no onboarding wizard.</td>
+    </tr>
+  </tbody>
+  <thead><tr><th>Opportunities</th><th>Threats</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>59% likely to switch notetakers within 12 months = churn-harvesting, not net-new evangelism. Quantified privacy backlash as free ammo (Otter litigation, Fireflies BIPA, Google Meet's Mar-2026 bot default-deny, the Bilzerian story). Regulated client-facing solos = fastest-warming, least-defended, real WTP. Arabic/RTL/MENA uncontested. Channel fit near-perfect at ~$0 (Show HN, r/LocalLLaMA, Privacy Guides).</td>
+      <td>Granola ($1.5B / $125M Series C) owns the no-bot wedge and mindshare; "we don't store your audio" is "privacy enough" for ~80–90% of buyers. Meetily/Hyprnote own the exact local wedge with 252k / 18k head starts and the capital/velocity to copy your diffs. Platform commoditization (Zoom/MS/Google "good-enough free, no bot"). The privacy paradox.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Is "privacy" a strong enough wedge for prosumers? (the skeptical answer)</h4>
+<p><strong>For the prosumers in the brief: no.</strong> Privacy is a weak <em>primary</em> driver and a strong <em>gating</em> driver, and the brief picks the wrong side. Worse for Adversaria specifically: two free, open, auditable local rivals already exist, so a privacy-motivated prosumer's rational move is to download Meetily/Hyprnote at $0 — making "privacy" a reason to <em>not pay you</em>. The fix is positioning, not engineering: lead with the gate, target regulated client-facing pros for revenue, and keep the broad/MENA play as free top-of-funnel.</p>
+
+<h4>Pre-launch readiness checklist</h4>
+<ul>
+  <li>☐ <strong>macOS notarized &amp; Gatekeeper-clean</strong>, verified by a fresh-machine install with no terminal step — and the full TCC chain (ScreenCaptureKit, mic, EventKit) correct on a clean machine, or capture silently fails.</li>
+  <li>☐ <strong>Launch free-only.</strong> No in-binary license gating. Instrument upgrade intent; charge later.</li>
+  <li>☐ <strong>Guided first-run to a first summary with zero terminal use</strong>, defaulting non-technical users to the Groq path (the local-LLM-server requirement is otherwise a launch blocker for this audience; note the <code>HF_HUB_DISABLE_XET=1</code> model-download gotcha).</li>
+  <li>☐ <strong>Capture-path reliability proven end-to-end</strong> — manual full-flow QA on real speech across known failure modes + a few Rust integration tests on the audio/storage boundary.</li>
+  <li>☐ <strong>Groq long-meeting behavior fails gracefully</strong> — chunk/queue or show a clear in-app message at the ~6,000 TPM limit.</li>
+  <li>☐ <strong>A defensible privacy/data-flow page</strong> stating exactly what stays local, what Groq transmits, and the audio-deletion guarantee.</li>
+  <li>☐ <strong>Positioning rewritten around the gate</strong>, Bilzerian as cold-open, aimed at regulated/client-facing pros with broad/RTL as free funnel.</li>
+  <li>☐ <strong>Launch assets staged</strong> (Show HN draft, PH "Coming Soon" seeded, directory submissions filed).</li>
+  <li>☐ <strong>Bug-intake decided for a no-telemetry product</strong> — in-app feedback as primary + an opt-in local-log path; never phone home silently.</li>
+  <li>☐ <strong>A loud answer to the closed-source-vs-MIT trust gap</strong> — open-source the capture/privacy-critical core or publish a reproducible build, on the public roadmap if not before launch.</li>
+</ul>
+
+<!-- ============ 3 ============ -->
+<h2 id="s3">3. The 360° Competitive Landscape</h2>
+
+<p><strong>The market splits into two camps Adversaria sits between:</strong> well-funded cloud incumbents (Granola, Otter, Fireflies, Fathom, tl;dv, Circleback, Supernormal, Read AI) that win convenience and collaboration, and free open-source local tools (Meetily, Hyprnote) that own the exact privacy wedge with massive head starts. Adversaria's edge is the intersection neither camp occupies: <em>strictest-default privacy + deepest shipped local features + cross-platform now</em>.</p>
+
+<h4>Master comparison</h4>
+<table>
+  <thead>
+    <tr>
+      <th>Product</th><th>Privacy model</th><th>Free / entry paid</th><th>Setup</th><th>Diarization</th><th>Collab</th><th>Platform</th><th>Funding</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Adversaria</strong></td>
+      <td><span class="good">100% on-device by default; audio deleted; encrypted at rest + Touch ID</span></td>
+      <td>Generous free / Pro $15/mo (planned)</td>
+      <td>Med (local LLM) · easy via Groq</td>
+      <td><span class="good">On-device, free, shipped</span></td>
+      <td>None (single-user)</td>
+      <td>macOS + Windows</td>
+      <td>Bootstrapped solo</td>
+    </tr>
+    <tr>
+      <td>Granola</td>
+      <td>Local capture, <span class="bad">cloud transcript+notes, cloud LLM, trains by default</span></td>
+      <td>$0 (25 notes lifetime) / $14 / $35</td>
+      <td>Easy</td>
+      <td>Limited (cloud)</td>
+      <td>Shared folders / Spaces</td>
+      <td>mac/Win/iOS</td>
+      <td><strong>$1.5B</strong> / $125M Series C</td>
+    </tr>
+    <tr>
+      <td>Meetily</td>
+      <td>100% local default (<span class="warn">Pro Hosted-AI opt-in</span>); MIT open source</td>
+      <td>$0 (MIT) / $10–25</td>
+      <td>Hard (Ollama/Python)</td>
+      <td><span class="warn">"Soon" / Pro-gated</span></td>
+      <td>Enterprise roadmap</td>
+      <td>mac/Win/Linux</td>
+      <td>Bootstrapped (Zackriya)</td>
+    </tr>
+    <tr>
+      <td>Otter.ai</td>
+      <td><span class="bad">Cloud, bot, voiceprints, trained on data</span></td>
+      <td>$0 (300 min/mo) / $16.99 / $30</td>
+      <td>Easy</td>
+      <td>Yes (server voiceprint)</td>
+      <td>Yes</td>
+      <td>cloud/mobile/desktop/Chrome</td>
+      <td>~$73–80M · $100M ARR · <span class="bad">LAWSUIT</span></td>
+    </tr>
+    <tr>
+      <td>Fireflies.ai</td>
+      <td><span class="bad">Cloud, bot, voiceprints</span></td>
+      <td>$0 (unlimited transcription) / $18 / $29 / $39</td>
+      <td>Easy</td>
+      <td>Yes (mis-label complaints)</td>
+      <td>Yes</td>
+      <td>cloud/mobile/Chrome</td>
+      <td>$1B (secondary) · ~$19M raised · <span class="bad">BIPA SUIT</span></td>
+    </tr>
+    <tr>
+      <td>Fathom</td>
+      <td><span class="bad">Cloud; bot + bot-free beta, all cloud-processed</span></td>
+      <td>$0 (unlimited recording) / $20 / $34</td>
+      <td>Easy</td>
+      <td>Yes</td>
+      <td>Yes (team)</td>
+      <td>cloud/iOS</td>
+      <td>~$21.7M · ~$30M ARR</td>
+    </tr>
+    <tr>
+      <td>tl;dv</td>
+      <td><span class="warn">Cloud, EU-hosted; bot + no-bot option</span></td>
+      <td>$0 / $18 / $29</td>
+      <td>Easy</td>
+      <td>Yes (voiceprints, higher tier)</td>
+      <td>Yes</td>
+      <td>cloud/mobile/Chrome</td>
+      <td>~$4.5–5.6M</td>
+    </tr>
+    <tr>
+      <td>Circleback</td>
+      <td><span class="bad">Cloud (bot + no-bot desktop, all cloud-processed)</span></td>
+      <td><span class="bad">No free</span> (7-day trial) / $25 / $30</td>
+      <td>Easy</td>
+      <td>"Flimsy" (per reviews)</td>
+      <td>Team tier</td>
+      <td>cloud/desktop/iOS/Android</td>
+      <td>$2.5M seed (YC W24)</td>
+    </tr>
+    <tr>
+      <td>Supernormal</td>
+      <td><span class="bad">Cloud, bot-free desktop, cloud-processed</span></td>
+      <td>$0 (15 credits/mo) / $20 / $40</td>
+      <td>Easy</td>
+      <td>Unverified</td>
+      <td>Unlimited-seat credit pool</td>
+      <td>cloud/desktop</td>
+      <td>~$12.9M (stale since 2023)</td>
+    </tr>
+    <tr>
+      <td>Hyprnote / Anarlog</td>
+      <td>Local-first default, <span class="warn">keeps audio on disk, plaintext .md; speaker ID is paid cloud</span></td>
+      <td>$0 (MIT) / $8 / $25</td>
+      <td>Med (BYO-LLM / HyprLLM)</td>
+      <td><span class="bad">Paid cloud only</span></td>
+      <td>Cloud sync/share (paid)</td>
+      <td><span class="bad">macOS only</span> (Win/Linux Q2 '26)</td>
+      <td>$2.2M total (YC S25)</td>
+    </tr>
+    <tr>
+      <td>Read AI <span class="small">(adjacent)</span></td>
+      <td><span class="bad">Cloud, bot, "digital twin," sentiment scoring</span></td>
+      <td>$0 (5 mtgs/mo) / $19.75 / $29.75 / $39.75</td>
+      <td>Easy</td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>cloud</td>
+      <td>$50M Series B · ~$450M val</td>
+    </tr>
+  </tbody>
+  <caption>Prices per user. "Entry paid" shows free / cheapest paid (annual-equivalent figures used where the corpus reports them). Lawsuit/funding facts as of June 2026; 25-note Granola cap and several user counts are third-party/unverified.</caption>
+</table>
+
+<h4>How we beat them / where they beat us</h4>
+<ul>
+  <li><strong>Granola</strong> — <em>We beat them:</em> categorically — your transcript and notes never touch a server, and we don't train on you (Granola uploads both to US AWS, runs cloud LLMs, and trains by default with org-wide opt-out paywalled to $35). <em>They beat us:</em> on everything else — $1.5B war chest, beloved UX, mac/Win/iOS, viral VC loop, and "we don't store your audio" satisfies 80–90% of buyers. Don't fight them on the prosumer's turf; win the buyer for whom their cloud is disqualified by policy.</li>
+  <li><strong>Meetily</strong> — <em>We beat them:</em> on polish for non-technical users (signed/notarized + onboarding vs Ollama/Python friction and ~165 open issues), on security (encryption-at-rest + Touch ID they don't advertise), and on shipped depth (diarization + Ask-All RAG vs their "Soon"). <em>They beat us:</em> 252k downloads, 12.9k stars, MIT auditability, Linux, and an SEO machine that owns your keywords. Don't fight on stars or price.</li>
+  <li><strong>Otter</strong> — <em>We beat them:</em> our architecture is the legal hedge for everything they're being sued for (no bot = no covert-recording/consent claim; no voiceprint = no BIPA; nothing uploaded = nothing to intercept). <em>They beat us:</em> 35M users, $100M ARR, integrations, agents. Different buyers — target the privacy-burned.</li>
+  <li><strong>Fireflies</strong> — <em>We beat them:</em> no bot kills their single most-documented complaint; no voiceprint sidesteps their active BIPA suit; local beats their cloud upload. <em>They beat us:</em> unlimited free transcription, 1M+ companies, network effects once colleagues run the bot.</li>
+  <li><strong>Fathom</strong> — <em>We beat them:</em> their "bot-free capture" still uploads to their cloud — for NDA/regulated buyers they're disqualified at any price, including free; we also capture in-person meetings (a documented Fathom weakness). <em>They beat us:</em> best-in-class free tier, 5.0 G2 over 6,600 reviews, CRM depth.</li>
+  <li><strong>tl;dv</strong> — <em>We beat them:</em> their EU servers still hold your meetings and send them to Anthropic; ours never do. No Arabic (they list Hebrew). <em>They beat us:</em> 2M users, 5,000+ integrations, sales coaching/CI.</li>
+  <li><strong>Circleback</strong> — <em>We beat them:</em> no free tier vs our $0 start; their "no-bot" desktop still runs the same US-cloud pipeline; their diarization is reviewed as "flimsy" vs our on-device. <em>They beat us:</em> best-rated note quality, 1,000+ app automations, polish.</li>
+  <li><strong>Supernormal</strong> — <em>We beat them:</em> they explicitly abandoned locality for an agency-deliverables pivot; we keep 100% on-device and don't credit-meter. <em>They beat us:</em> finished decks/briefs, 700k+ orgs, enterprise certs.</li>
+  <li><strong>Hyprnote/Anarlog</strong> — <em>We beat them:</em> cross-platform now (they're macOS-only until Q2 2026), diarization free-and-local (they charge cloud for speaker ID), audio auto-deleted (they keep it on disk), and encryption + Touch ID (they store plaintext .md). <em>They beat us:</em> 8.7k stars, MIT, YC S25, $2.2M, a proprietary on-device model (HyprLLM), and weekly release velocity. If they ship Windows, a key opening closes — move now.</li>
+  <li><strong>Read AI</strong> — <em>We beat them:</em> easy contrast target — bot-based, cloud, surveillance-flavored (sentiment/engagement scoring) vs our private local. <em>They beat us:</em> $450M valuation, ~1M new users/month, enterprise reach.</li>
+</ul>
+
+<h4>Competitor pricing matrix (annual-equivalent unless noted)</h4>
+<table>
+  <thead><tr><th>Product</th><th>Free</th><th>Entry Pro (mo)</th><th>Entry Pro (annual)</th><th>Mid</th><th>Top / Enterprise</th></tr></thead>
+  <tbody>
+    <tr><td>Meetily</td><td>$0 (MIT, unlimited)</td><td>$25 regular</td><td><strong>$10</strong> ($120/yr)</td><td>—</td><td>Custom</td></tr>
+    <tr><td>Hyprnote</td><td>$0 (MIT)</td><td>Lite $8</td><td>Pro $25 / $250yr</td><td>—</td><td>Custom</td></tr>
+    <tr><td>Granola</td><td>$0 (25 notes lifetime)</td><td>$14</td><td>$14</td><td>—</td><td>$35</td></tr>
+    <tr><td>Otter</td><td>$0 (300 min/mo)</td><td>$16.99</td><td>$8.33</td><td>Business $19.99</td><td>Custom</td></tr>
+    <tr><td>Fireflies</td><td>$0 (unlimited transcription)</td><td>$18</td><td>$10</td><td>Business $19</td><td>$39 (annual only)</td></tr>
+    <tr><td>Fathom</td><td>$0 (unlimited recording)</td><td>$20</td><td>$16</td><td>Business $25</td><td>Custom</td></tr>
+    <tr><td>tl;dv</td><td>$0 (unlimited recording)</td><td>~$29</td><td>$18</td><td>Business $29</td><td>Custom</td></tr>
+    <tr><td>Circleback</td><td><span class="bad">None (7-day)</span></td><td>$25</td><td>$20.83</td><td>Team $25</td><td>Custom</td></tr>
+    <tr><td>Supernormal</td><td>$0 (15 credits/mo)</td><td>$20</td><td>—</td><td>Business $40</td><td>Custom</td></tr>
+    <tr><td>Read AI</td><td>$0 (5 mtgs/mo)</td><td>$19.75</td><td>$15</td><td>Ent $22.50</td><td>Ent+ $29.75</td></tr>
+    <tr><td><strong>Adversaria (rec.)</strong></td><td><strong>$0 (generous, local)</strong></td><td><strong>$15</strong></td><td><strong>$10</strong> ($120/yr)</td><td>—</td><td>Seat-pack (later)</td></tr>
+  </tbody>
+  <caption>Two anchors matter: direct local rivals price Pro at $8–$10/mo annual ($120/yr) and are free-forever OSS underneath; the prosumer cloud entry tier clusters $8.33–$20/mo. Adversaria's $10/yr-equivalent lands at exact parity with Meetily and just below Granola's $14.</caption>
+</table>
+
+<!-- ============ 4 ============ -->
+<h2 id="s4">4. Positioning &amp; Messaging</h2>
+
+<p><strong>Lead with the gate, not the virtue; lead with the cloud, not the bot.</strong> "No bot" is now commoditized (Granola, Fathom, Otter, Circleback, Supernormal, and Zoom itself all claim it; only 16% of users cite "botless" as a priority). The one claim the cloud no-bot tools <em>structurally cannot make</em> is "nothing leaves the machine" — so that is the headline, with "no bot" as the second sentence.</p>
+
+<h4>Positioning statement</h4>
+<blockquote>
+<p>For client-facing professionals who run calls they can't paste into someone else's cloud — consultants, lawyers, clinicians, financial advisors, founders, and privacy-conscious prosumers — <strong>Adversaria</strong> is a <strong>bot-free, on-device meeting notetaker</strong> that delivers Granola-grade notes, transcripts, and cross-meeting answers that stay entirely on your own machine: the audio is transcribed on-device and deleted, and the transcript never touches a server. Unlike cloud notetakers (Granola, Otter, Fireflies, Fathom) that upload your transcript and run it on someone else's LLM, and unlike local-but-leaky OSS tools (Meetily, Hyprnote) that keep your audio on disk and still ship diarization and cross-meeting search as "coming soon," Adversaria is sovereign by architecture — and already does the smart parts (diarization, chat-with-a-meeting, ask-across-all-meetings, action items) locally and free.</p>
+</blockquote>
+
+<h4>The one-liner (hero)</h4>
+<blockquote><p><strong>No bot joins your call. Nothing leaves your machine.</strong></p></blockquote>
+
+<h4>Five taglines (pick by channel)</h4>
+<ol>
+  <li>"Your meetings never touch a server." — Privacy Guides / r/privacy / HN</li>
+  <li>"Granola-grade notes that physically can't leak."* — Product Hunt / alternative-to pages</li>
+  <li>"The notetaker your NDA would actually approve." — consultants/freelancers</li>
+  <li>"On-device meeting intelligence. Sovereign by architecture, not by policy." — r/LocalLLaMA / Lobsters</li>
+  <li>"Where your meetings turn into done." — North-Star line, productivity audience</li>
+</ol>
+<p class="small">* Honesty guardrail (see §8/P5): absolutes like "physically can't leak" are <em>falsified</em> by the auto-updater, in-app feedback, Google OAuth, MCP, and the Groq path. Use "your meeting content stays on your machine in local mode" rather than "physically can't leak," and keep the Groq label visible. The truthful firewall demo is: <em>local mode, minus the disclosed updater check, makes no content calls.</em></p>
+
+<h4>Key messages, ranked for this buyer</h4>
+<ol>
+  <li><strong>It can't leak — that's architecture, not a policy.</strong> Audio, transcript, and AI run locally; the recording is deleted after transcription; notes live in an encrypted SQLite store unlocked by your face/fingerprint. No server to subpoena, breach, or train on. (Cloud rivals offer SOC-2 promises; Adversaria offers the absence of a transmission.)</li>
+  <li><strong>No bot, no "X has joined," no consent landmine.</strong> Captures system audio + mic directly — your client never gets the creepy popup and never self-censors. (72% report discomfort when a bot joins; 38% change what they say.)</li>
+  <li><strong>Private doesn't mean stripped-down — it's actually smarter.</strong> On-device diarization, chat with one meeting, ask across all meetings, auto-extracted action items — shipped today, free, local. The leading OSS tools list these as "coming soon."</li>
+  <li><strong>Your meetings become a system, not a graveyard.</strong> Action items roll into one to-do view + weekly recap; a built-in MCP server lets Claude/ChatGPT query your meetings — on your machine. (The North-Star differentiator no competitor has.)</li>
+</ol>
+<p class="small"><strong>Supporting message (global/MENA funnel):</strong> "It speaks your language, right-to-left." A genuinely RTL-correct interface — nobody else in the category does this.</p>
+
+<h4>The enemy / wedge narrative</h4>
+<p>The enemy isn't a competitor — it's <strong>the surveillance-by-default cloud-AI meeting stack</strong>: a silent bot that joins uninvited, a transcript that lives on a US server forever, a model that trains on your client's words by default. The wedge is that this is no longer abstract — it's lawsuits and broken deals:</p>
+<ul>
+  <li><strong>The Bilzerian incident (cold open).</strong> After a Zoom with a VC firm ended, Otter kept transcribing the investors' private post-call debrief — "strategic failures and cooked metrics" — and emailed it to the founder. <strong>It killed the deal.</strong> (Washington Post; corroborated by NPR.)</li>
+  <li><strong>Otter</strong> — <em>In re Otter.AI Privacy Litigation</em>, No. 5:25-cv-06911 (N.D. Cal.), four class actions consolidated Oct 22, 2025; the lead plaintiff had no Otter account — he was just in the room.</li>
+  <li><strong>Fireflies</strong> — <em>Cruz v. Fireflies.AI</em>, No. 3:25-cv-03399 (C.D. Ill.), Dec 2025: "Speaker Recognition" builds voiceprints of everyone present under Illinois BIPA ($1,000–$5,000/violation). Adversaria stores no voiceprint.</li>
+  <li><strong>Even the giants retreated</strong> — Zoom rewrote its ToS in Aug 2023 after granting itself a training license. Yet Granola still trains by default, opt-out paywalled to $35.</li>
+  <li><strong>Platforms are codifying it</strong> — since March 2026 Google Meet flags third-party notetaker bots as a "potential risk" with default-deny.</li>
+</ul>
+<p class="small"><strong>Legal-hygiene note (§8/P5):</strong> cite only the public docket + WaPo/NPR for competitor suits; report facts, don't characterize. Naming a $1B competitor's active litigation in marketing invites a trade-libel nastygram — stay factual.</p>
+
+<h4>Objection handling (top 5, condensed)</h4>
+<ul>
+  <li><strong>"Do I have to set up Python/Ollama?"</strong> — Two paths, your choice. Fully-local needs a local LLM (guided as far as possible). Or paste a free Groq key and run in ~60 seconds, no GPU — clearly labeled "not sovereign, transcript leaves the device." Local stays the default.</li>
+  <li><strong>"No GPU / will it melt my laptop?"</strong> — On Apple Silicon it uses the Neural Engine you already paid for; on Windows it uses your GPU or falls back to CPU; if your hardware can't, the Groq path gives the same notes with none of your machine's resources.</li>
+  <li><strong>"Is local AI as good as cloud?"</strong> — For accurate transcripts + structured summaries, yes (Whisper large-v3 + a 35B local model). Transcription is commoditized in 2026; the differentiators (diarization, cross-meeting recall, action items) we do locally. A frontier cloud model is one toggle away per meeting.</li>
+  <li><strong>"You're one person — what if you disappear?"</strong> — Trust is falsifiable, not promised: run it behind a firewall and watch local mode make no content calls; every meeting exports to plain Markdown (you're never hostage); code-signed, notarized, encrypted at rest, no account, no server that receives your meetings.</li>
+  <li><strong>"Why not just use Granola free?"</strong> — Granola's free tier caps at 25 notes <em>ever</em>, trains on you by default, and uploads every transcript to US cloud + a third-party LLM. Adversaria's free tier is unlimited, local, no account. If you're fine with your meetings on AWS, Granola is beautiful; Adversaria exists for the people who aren't.</li>
+</ul>
+
+<h4>Landing-page hero copy</h4>
+<blockquote>
+<p><strong># Your meetings. Your machine. Nobody else's.</strong></p>
+<p>Adversaria writes structured notes, action items, and answers from your calls — with <strong>no bot joining the meeting and your meeting content never leaving your computer</strong>. The audio is transcribed on-device and deleted. The transcript never touches a server. It just works, on Mac and Windows.</p>
+<ul>
+  <li>🚫 <strong>No bot, no awkwardness.</strong> It captures the call directly — clients never see "Adversaria has joined."</li>
+  <li>🔒 <strong>Nothing leaves your machine.</strong> Transcription and AI run locally; recordings are deleted; notes are encrypted and unlocked with your fingerprint. Run it behind a firewall and watch local mode stay silent.</li>
+  <li>🧠 <strong>Smarter than a transcript.</strong> On-device speaker labels, chat with any meeting, ask across all of them, and action items that roll into your to-dos — all local, all free.</li>
+</ul>
+<p><strong>Download free — Mac &amp; Windows.</strong> No account. No cloud. No catch. &nbsp;·&nbsp; <span class="small">No GPU? Start in 60 seconds with a free Groq key → (not sovereign — transcript leaves device)</span></p>
+</blockquote>
+
+<!-- ============ 5 ============ -->
+<h2 id="s5">5. Pricing Strategy</h2>
+
+<div class="callout">
+<p><strong>Headline: free-forever generous tier; Pro at $15/mo or $120/yr (early-bird $96/yr) — but launch free-only and switch Pro on ~30–60 days later once a Merchant-of-Record + offline license path is built and QA'd.</strong> Keep all inference local or BYO-key so Pro gross margin ≈ 100% with zero privacy liability. The product can't bill in 4 weeks; the pricing below is the <em>plan</em>, not the launch-day SKU.</p>
+</div>
+
+<h4>Design rule unique to this product</h4>
+<p>Local inference costs the founder $0 and BYO-key inference costs $0 (the user's key pays). So gates must be <strong>feature/value gates, never cost gates</strong> — and the free tier must be genuinely generous, because the two most direct rivals are free-forever OSS. A stingy free tier loses the privacy crowd before pricing enters the conversation.</p>
+
+<h4>Free vs Pro split</h4>
+<table>
+  <thead><tr><th>FREE — "Private notes for every meeting" (deliberately generous, $0 marginal cost)</th><th>PRO — "Your meetings as a searchable second brain + task engine"</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>
+        <ul>
+          <li>Unlimited recording + on-device transcription + local-LLM summary + action items</li>
+          <li><strong>On-device diarization — given away free</strong></li>
+          <li>Chat-with-a-single-meeting (grounded Q&amp;A)</li>
+          <li>Copy + Export .md</li>
+          <li>Arabic/RTL + multilingual summaries</li>
+          <li><strong>All privacy features</strong>: encryption-at-rest, Touch ID/Windows Hello, per-meeting PIN</li>
+          <li>Free Groq BYO-key path (the no-GPU on-ramp)</li>
+          <li>My Notes, name + custom vocabulary</li>
+        </ul>
+      </td>
+      <td>
+        <ul>
+          <li><strong>Cross-meeting "Ask" / RAG over all meetings</strong> — the strongest lever; value compounds weekly as the free corpus grows. Granola's history-cap lever <em>inverted into additive value</em> (no punishment, no resentment).</li>
+          <li><strong>Calendar integration + attendee rosters</strong> — connecting a calendar is an action only client-facing pros take; the gate self-identifies the high-WTP buyer.</li>
+          <li><strong>Advanced exports</strong> (PDF/DOCX/Notion/Obsidian) — highest-intent paywall, fires at the moment a note must reach a client.</li>
+          <li><strong>Weekly recap + consolidated to-dos + read-only MCP server</strong> — the North-Star "feed a task board + agent loop"; lowest-churn cohort.</li>
+          <li>Unlimited custom prompt templates + priority support + early access.</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p class="small"><strong>Why give this much away:</strong> it costs nothing to serve, it must beat Meetily/Hyprnote's free OSS, and "we don't paywall your privacy <em>or</em> your diarization" is itself a positioning weapon (Meetily gates diarization to Pro; Otter/Fireflies gate privacy/HIPAA to Enterprise).</p>
+
+<h4>Price points &amp; rationale</h4>
+<ul>
+  <li><strong>Pro Monthly: $15/mo · Pro Annual: $120/yr ($10/mo, "2 months free / save 33%") · Launch early-bird: $96/yr (~$8/mo)</strong>, time-boxed to launch week.</li>
+  <li><strong>Anchoring:</strong> $120/yr = exact parity with Meetily Pro ("same price, but encrypted at rest, with diarization + cross-meeting RAG, on Windows <em>and</em> Mac, today"). $15 monthly anchors to Granola's $14 ("same money, and it physically can't upload your meeting"). You sit below Circleback's $20.83 no-free-tier floor and Fathom/Read AI's ~$20.</li>
+  <li><strong>Push to annual:</strong> the $5/mo gap between monthly and annual funnels cash upfront — critical for a &lt;$2k-budget solo founder (funds runway, kills churn-admin, makes LTV predictable).</li>
+  <li><strong>Don't race to $8.</strong> The ~7% measured privacy premium and the fact that regulated buyers treat privacy as a purchase <em>gate</em> justify pricing at the top of the $10–20 band. These buyers read "$8" as "hobby project."</li>
+</ul>
+
+<h4>Lifetime deal &amp; team tier</h4>
+<p><span class="pill warn">CAREFUL</span> <strong>Lifetime deal: only as a capped, time-boxed tactic — and only after billing infra exists; do not bank it as launch capital.</strong> A "Founder's Lifetime" at $149 one-time, capped to ~300 buyers, is <em>safe specifically because the product is local</em> (covers local + BYO-key features at $0 marginal cost; explicitly exclude any future hosted services). It could fund a year of runway. <strong>But the feasibility critique is right that 300 buyers of a closed-source $149 license, from a crowd that can get Meetily/Hyprnote free and auditable, before you have an audience or a tested in-binary license path, is not a runway assumption you can plan around.</strong> Treat any LTD revenue as upside, run it after the license path is QA'd, then close it (LTDs cannibalize MRR).</p>
+<p><span class="pill no">NO</span> <strong>Team/collaboration tier at launch.</strong> The app is single-user SQLite; real team features need a server — reintroducing the exact cost + privacy liability the product avoids. If small firms ask, offer a trivial <strong>seat-pack</strong> (e.g., 5 Pro entitlements at ~15% off) — pure billing, no new infra, no collaboration. Real multi-user is a post-PMF, post-architecture decision.</p>
+
+<h4>Billing &amp; infra a solo founder must stand up (post-launch, before charging)</h4>
+<ol>
+  <li><strong>Payments — Merchant of Record (LemonSqueezy recommended), not raw Stripe.</strong> Global self-serve means an MoR must remit worldwide VAT/GST/sales tax. Meetily and Hyprnote both run on LemonSqueezy/Keygen for exactly this; LemonSqueezy's checkout also issues license keys, collapsing two systems into one.</li>
+  <li><strong>License/entitlement — offline-verifiable.</strong> A privacy-first app can't phone home to check a license each launch. Issue a signed token (Ed25519/JWT) verified locally inside Tauri, online activation once, 1–2 device binding, then an offline grace window. No standing server to operate. <strong>Keep license code away from the capture path</strong> (which has zero tests).</li>
+  <li><strong>The who-pays-for-inference question — the load-bearing decision.</strong> Monetize <em>entitlements and features, never inference</em>: local = founder pays $0; BYO-key = the user pays and the transcript flows directly to the provider under their key (the founder never sees it, externalizing both cost and GDPR processor liability). <strong>Do not build hosted/managed inference</strong> — it creates per-token COGS, makes you a data processor, and breaks the brand. If ever demanded, ship it later as an explicit, opt-in, clearly-labeled "Adversaria Managed AI" add-on at cost-plus, walled off from the sovereign brand.</li>
+</ol>
+
+<h4>First-year revenue sensitivity (illustrative — once Pro is live)</h4>
+<table>
+  <thead><tr><th>Scenario</th><th>Downloads (Y1)</th><th>Activation</th><th>Active</th><th>Paid (of active)</th><th>Payers</th><th>Exit MRR</th><th>~ARR</th></tr></thead>
+  <tbody>
+    <tr><td>Conservative</td><td>8,000</td><td>30%</td><td>2,400</td><td>3%</td><td>72</td><td>~$800/mo</td><td>~$9.5K</td></tr>
+    <tr><td><strong>Base</strong></td><td>20,000</td><td>40%</td><td>8,000</td><td>5%</td><td><strong>400</strong></td><td><strong>~$4,400/mo</strong></td><td><strong>~$53K</strong></td></tr>
+    <tr><td>Optimistic</td><td>50,000</td><td>50%</td><td>25,000</td><td>8%</td><td>2,000</td><td>~$22,000/mo</td><td>~$264K</td></tr>
+  </tbody>
+  <caption>Blended ARPU ~$11/mo (annual-heavy). Activation is the #1 lever you control — the free Groq path is what lifts it from ~30% toward 50%. Be honest: this is an indie/lifestyle trajectory, not venture-scale. The compliance-gated regulated-pro wedge is what supports top-of-band pricing and a real (if modest) revenue curve via seat-packs.</caption>
+</table>
+
+<!-- ============ 6 ============ -->
+<h2 id="s6">6. Do You Need Beta Testers?</h2>
+
+<div class="callout verdict">
+<p><span class="pill yes">YES</span> <strong>Run a private beta of 30–50 before the public spike — primarily to de-risk, not to grow.</strong> Your Rust backend has zero automated tests, you have two un-battle-tested install paths (Windows + un-finalized macOS notarization), and the Groq long-meeting rate-limit is a known sharp edge. A public HN/PH spike is the worst place to discover a first-run crash or a dropped recording — the one unrecoverable, churn-causing failure for a capture app. You already have the instrumentation (in-app sign-up + feedback + auto-updater), so the cost is low and the payoff (ship a fix to all testers in one auto-update) is high.</p>
+</div>
+
+<h4>Beta program design</h4>
+<ul>
+  <li><strong>How many:</strong> 30–50 active — enough to surface crashes across hardware (Intel vs Apple Silicon, GPU vs no-GPU, Windows vs Mac) without drowning a solo founder.</li>
+  <li><strong>Recruit from:</strong> existing in-app beta sign-ups first; then r/macapps + r/LocalLLaMA ("looking for 25 testers for a local meeting notetaker"), your personal/indie network, and <strong>3–5 friendly consultants/lawyers for the high-WTP signal</strong> (also your first compliance design-partner conversations). Bias toward people who do real meetings — Whisper hallucinates on silence.</li>
+  <li><strong>Instrument feedback:</strong> (1) in-app feedback as default; (2) a one-screen first-run survey ("did it install clean? did your first summary make sense? what broke?"); (3) a Discord/Telegram for fast back-and-forth; (4) a daily metric — % of testers reaching a successful first summary (activation) and crash-free session rate.</li>
+  <li><strong>Exit criteria to launch:</strong> crash-free first run on a clean Mac and a clean Windows machine, the long-meeting Groq path degrades gracefully, and ≥80% of testers reach a first summary unaided. Auto-updater ships the fixes; launch on the hardened build.</li>
+</ul>
+
+<!-- ============ 7 ============ -->
+<h2 id="s7">7. The Launch Playbook</h2>
+
+<p><strong>One strategic decision governs everything:</strong> lead with the gate, not the virtue; make <strong>Show HN the primary motion</strong> (merit-based, HN's favorite category, needs no pre-built audience) and demote Product Hunt to a second peak. This is a <em>credibility-and-list-building launch, not a revenue launch.</em> Your direct fight is Hyprnote and Meetily — not Granola. Your three launch-day wedges against them: cross-platform <em>now</em>, stricter default privacy, and shipped depth (diarization + RAG live and free).</p>
+
+<h4>Week-by-week (3-week core; stretch to 4)</h4>
+<table>
+  <thead><tr><th>Phase</th><th>Must-do (verify)</th></tr></thead>
+  <tbody>
+    <tr><td><strong>T-3 — Foundations &amp; de-risking</strong></td><td>Finish macOS notarization (hard blocker; verify clean-Mac install, zero workaround). Stand up PH "Coming Soon" page (target 500–1,000 followers) + a landing page with a no-email-gate download. Recruit the 30–50 beta cohort. Submit to AlternativeTo (alt to Granola/Otter/Fireflies), SaaSHub, BetaList now so they index.</td></tr>
+    <tr><td><strong>T-2 — Assets + beta loop</strong></td><td>Produce the 60–90s captioned demo + a 10–15s silent GIF of the signature loop (sparse note → summary + action items). Write the Show HN post, PH first comment, 5–10 gallery images, taglines. Fix the top 3 crash/confusion bugs only. Add the Groq long-meeting graceful message. Soft-participate (don't pitch) in r/macapps, r/LocalLLaMA, r/privacy, Lobsters.</td></tr>
+    <tr><td><strong>T-1 — Seeding &amp; dry run</strong></td><td>Draft launch-day email (link only — never "upvote"). Line up 8–12 genuine supporters. Pitch newsletters/reviewers (embargoed). Dry-run install on a borrowed Windows machine + clean Mac. Pre-write the "how we verified nothing leaves the machine" note (network-monitor screenshot — that <em>honestly</em> shows the disclosed updater check and nothing else in local mode).</td></tr>
+    <tr><td><strong>T-0 — Launch week (two peaks)</strong></td><td>Day 1 (Tue/Wed 8–10am PT): <strong>Show HN first</strong> — answer every comment fast/technically ~6 hrs. Day 3–4 (separate Tue/Wed/Thu 12:01am PT): Product Hunt (don't stack same-day). Post to one fitted subreddit per day.</td></tr>
+    <tr><td><strong>T+1 — Follow-through</strong></td><td>Post results recap + roadmap (build-in-public). Convert attention into the Pro <em>waitlist</em> (no fake checkout). Submit to Privacy Guides forum / PrivacyToolsList / awesome-privacy-tools with evidence. Re-pitch reviewers with "#X on PH, front-page HN" proof. Ship one fast visible fix.</td></tr>
+  </tbody>
+  <caption>To stretch to 4 weeks, insert a week between T-2 and T-1 to grow PH followers toward 1,000 and run a second beta wave. To compress to 2, cut beta to ~15 trusted users and pitch only the 5 highest-fit newsletters. Take the 4-week end; the date is soft — ship the day the four gates are green.</caption>
+</table>
+
+<h4>Channels, ranked</h4>
+<ol>
+  <li><strong>Hacker News "Show HN" (primary · low effort · high payoff, high variance).</strong> Title: <code>Show HN: Adversaria – On-device meeting notes, no bot, nothing leaves your Mac/PC</code>. Body in your own voice: one-line what, the problem (bot fatigue + Otter/Fireflies suits), the technical how (faster-whisper/MLX + Ollama, audio deleted, on-device diarization, encrypted SQLite), what's different, an honest ask. <strong>Mechanics:</strong> front page is early vote velocity — ~8–10 genuine upvotes + 2–3 thoughtful comments in the first 30 min; front page can drive 20k–80k visits. Timing Tue–Thu 8–10am PT. <strong>Risks specific to you:</strong> (a) closed-source — HN will hammer "how do we trust it's local?" — have the network-monitor proof ready and open-source one component as a trust token; (b) the untested Rust path could crash in front of the harshest audience (beta first); (c) <strong>never</strong> vote-ring or post "upvote" links (lifetime domain ban).</li>
+  <li><strong>Product Hunt (the loud single day).</strong> Self-hunt (no algorithmic advantage to a third-party hunter). 12:01am PT Tue/Wed/Thu. Target 200+ upvotes and 30+ comments by ~6am PT from verified/active accounts; reply within 15 minutes. First comment is your highest-leverage asset — positioning + Bilzerian in two lines + what's different (on-device default, Win+Mac today, free Groq) + the feedback you want. Top-5 on a normal Tue–Thu is realistic in the ~250–500 upvote range if early velocity holds. No "please upvote," no vote trading, no going dark.</li>
+  <li><strong>Named subreddits (obey the 10% rule, one at a time).</strong> Priority: <strong>r/macapps</strong> (~172k, your single best Mac sub), <strong>r/LocalLLaMA</strong> (Ollama/Whisper/Groq story lands hard), <strong>r/privacy</strong> + <strong>r/privacytoolsIO</strong> (lead with "audio deleted after transcription, nothing uploaded," bring your data-flow answer), <strong>r/selfhosted</strong>/<strong>r/opensource</strong> (softer while closed), <strong>r/productivity</strong>/<strong>r/macproductivity</strong> (workflow, not tech), Windows: <strong>r/windowsapps</strong>, <strong>r/software</strong>, <strong>r/Windows11</strong>. Niche: <strong>r/notetaking</strong>, <strong>r/ObsidianMD</strong> (lead with .md export), <strong>r/Whisper</strong>. High-WTP seeding: <strong>r/Lawyertalk</strong>, <strong>r/medicine</strong>/<strong>r/medicalscribe</strong>, consultant communities — with the compliance framing (NYC Bar Op. 2025-6 "deploy AI locally").</li>
+  <li><strong>Indie + privacy directories (evergreen SEO/credibility).</strong> AlternativeTo (DR-79, ranks for "[Granola/Otter] alternative"), SaaSHub, StartupStash, SaaSworthy, PrivacyToolsList.com, awesome-privacy-tools, Slant. <strong>Caveat:</strong> Privacy Guides / PrivacyTools.io weight toward open-source/audited/no-telemetry — as a closed app you'll likely be deferred; apply with your no-egress evidence but treat a full listing as a stretch goal (a structural reason to open-source a component).</li>
+  <li><strong>Newsletters &amp; reviewers (one hit ≈ a PH day).</strong> Privacy/security: TLDR Infosec (~400k), the TLDR network, Secrets of Privacy, Osano "Privacy Insider," TechCrunch Privacy tip line. Mac/productivity: MacStories (Federico Viticci), The Sweet Setup, 9to5Mac, Tom's Guide, HiddenApp; Tiago Forte; Ben's Bites / TLDR AI (local-AI angle).</li>
+  <li><strong>Privacy advocates (highest-credibility multipliers).</strong> Naomi Brockwell (NBTV) and Techlore — personal note + 60s demo + no-egress proof + a no-strings review build. The New Oil, Privacy Guides forum (as a tool-review candidate, not an ad).</li>
+  <li><strong>X build-in-public + Lobsters + Indie Hackers (slow burn / supporting).</strong> Post the demo GIF, the Bilzerian thread, reply substantively under Granola/Otter/Fireflies privacy threads. Lobsters (keep self-promo &lt;25%) is a friendlier engineer signal than HN.</li>
+</ol>
+
+<h4>Assets to build</h4>
+<ul>
+  <li><strong>Landing page</strong> (one scroll): hero + GIF + dual Download buttons (Mac/Windows — your live edge over Anarlog); the 3-second proof row; the Bilzerian "why this exists" block; feature triad screenshots; the labeled Groq path; "how we prove nothing leaves" (network-monitor shot); Pro <em>waitlist</em> capture (no fake checkout).</li>
+  <li><strong>Demo video (60–90s, captioned):</strong> bot fatigue → 3 sparse notes → meeting ends → structured summary + action items → flash of cross-meeting Ask + Touch ID unlock → end card.</li>
+  <li><strong>PH gallery (5–10 as a story):</strong> hero/what+who, summary card with action-item checkboxes, diarized "Me/Them," cross-meeting Ask, the "nothing leaves / Touch-ID encryption" proof shot, Windows+Mac side by side, CTA.</li>
+</ul>
+
+<h4>Budget (&lt;$2,000)</h4>
+<p>Most of this stack is ~$0. Reserve <strong>$300–800</strong> for the demo video (highest-ROI paid asset; or Screen Studio ~$89 DIY), GummySearch (~$29/mo) for Reddit listening, Loops/Resend free tier for the list, and optionally <strong>$300–500</strong> for one privacy/Mac newsletter sponsor slot only if organic doesn't land. <strong>Spend $0 on hunters or upvote services</strong> — zero ROI and HN/PH penalize it.</p>
+
+<!-- ============ 8 ============ -->
+<h2 id="s8">8. Risks &amp; How The Plan Survives Them</h2>
+
+<p>Prioritized from both pressure-tests. Each mitigation is already baked into the plan above, not appended.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Risk</th><th>How the plan survives it</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>P1</td>
+      <td><strong>Launching to an empty room (most likely cause of flop).</strong> Solo, no list, no PH following, a closed binary into a niche owned by two MIT rivals with 252k/18k head starts. Realistic outcome: 50–150 followers, mid-pack PH, a Show HN that gets buried or hammered on "closed-source, trust us."</td>
+      <td>Demote PH to secondary; <strong>Show HN is primary</strong> (merit-based). Spend the 2–4 weeks on the one compounding move: <strong>open-source one verifiable component</strong> — converts the worst liability into an HN trust token + discovery asset. Lower the bar explicitly: <strong>this is a list-and-credibility launch, not a revenue launch.</strong></td>
+    </tr>
+    <tr>
+      <td>P2</td>
+      <td><strong>The compounding activation trap.</strong> Non-tech users can't complete the local path (LLM server; the <code>hf_xet</code> 0-byte download bug), so they're pushed to Groq — where ~6,000 TPM <em>silently</em> fails on the long meetings they evaluate with. If Show HN sends 20–80k people, this dies in public.</td>
+      <td>Two hard gates: (1) first-run wizard <strong>defaults no-GPU users straight to Groq</strong> so the local-server wall is never first; (2) Groq long-meeting handling <strong>chunks/queues + shows a clear message</strong>, never silent. If either isn't done, not ready.</td>
+    </tr>
+    <tr>
+      <td>P3</td>
+      <td><strong>macOS notarization unfinished — a hard binary gate.</strong> Un-notarized = Gatekeeper scare on every fresh Mac. Worse, the hardened-runtime TCC chain (ScreenCaptureKit, mic, EventKit) must be correct or capture <em>silently fails</em> — exactly the repo's documented history.</td>
+      <td>Non-negotiable gate: a <strong>fresh-machine install with no dev tools, zero terminal, records + summarizes a real meeting end-to-end on both a clean Mac and a borrowed Windows box.</strong> Until it passes, no launch date. Budget extra days — entitlements/stapling eat time.</td>
+    </tr>
+    <tr>
+      <td>P4</td>
+      <td><strong>Freemium billing + Pro in 2–4 weeks is infeasible and self-contradictory.</strong> Can't stand up an MoR + entitlements + offline Ed25519 verification (in a Rust backend with zero tests) + QA in the window. The plan also wants "$45k LTD cash at launch" while saying "launch free-only" — the LTD <em>is</em> billing.</td>
+      <td><strong>Launch free-only.</strong> No in-binary license gating. Capture Pro intent via waitlist. <strong>Drop the $45k-LTD-as-runway thesis</strong> — treat any LTD as later upside after the license path is QA'd. Never build hosted inference under this brand. Charge ~30–60 days post-launch.</td>
+    </tr>
+    <tr>
+      <td>P5</td>
+      <td><strong>Absolute privacy claims are falsifiable + a liability.</strong> "Physically can't leak / zero calls home" is falsified by the auto-updater, in-app feedback, OAuth, MCP, and Groq. The "no-egress proof" screenshot would <em>show</em> egress. "Bar-approved" invites reliance; naming a $1B rival's active suit invites trade-libel.</td>
+      <td>Replace every absolute with a precise true claim. Publish a <strong>data-flow page enumerating every egress</strong>; make the updater disclosed/disable-able so the firewall demo is genuinely true (local mode, minus updater, makes no content calls). Never claim HIPAA/BIPA/"bar-approved" — say "designed for confidentiality." Cite only the public docket + WaPo/NPR; report facts, don't characterize.</td>
+    </tr>
+    <tr>
+      <td>P6</td>
+      <td><strong>The Rust capture path has zero tests; a dropped recording is the one unrecoverable churn event.</strong></td>
+      <td>Before any spike: a few <strong>integration tests on the audio/storage boundary</strong> + a manual full-flow QA matrix (Intel vs Apple Silicon, GPU vs no-GPU, Win vs Mac) run through the 30–50 beta on the auto-updater. Exit: crash-free first run + first summary unaided. Keep license code away from this path.</td>
+    </tr>
+    <tr>
+      <td>M1</td>
+      <td><strong>Privacy doesn't convert for prosumers — it's a <em>negative</em> driver here.</strong> The more a prosumer cares about privacy, the more they're routed to free, auditable Meetily/Hyprnote over a paid closed binary. The funnel and the payer are different humans.</td>
+      <td>Sell privacy <strong>as a compliance gate to regulated client-facing solos</strong> (NYC Bar Op. 2025-6, HIPAA + all-party-consent wiretap, finance, M&amp;A), price at the <em>top</em> of the band, keep broad prosumers/MENA as a $0 awareness funnel — never the monetization thesis.</td>
+    </tr>
+    <tr>
+      <td>M2</td>
+      <td><strong>"No bot" is commoditized</strong> (Granola, Fathom, Otter, Circleback, Supernormal, Zoom all claim it; only 16% prioritize "botless").</td>
+      <td>Demote "no bot" to the second sentence; <strong>lead with "nothing leaves the machine"</strong> — the one claim cloud no-bot tools structurally cannot make. Headline the gate, Bilzerian as cold-open.</td>
+    </tr>
+    <tr>
+      <td>M3</td>
+      <td><strong>The Groq path deletes sovereignty for the median user</strong> (the non-tech beachhead pastes a key → "just another cloud notetaker," but one with a rate limit), while the local minority can pick free MIT rivals. A pincer.</td>
+      <td>Near-term: default to Groq with graceful failure + honest labeling. <strong>Roadmap (loudly stated): bundle a small on-device model</strong> so a non-technical user gets genuine on-device with zero setup and no key — making "sovereign" the default reality. Monetize the <strong>provider-agnostic North-Star layer</strong> (meetings → to-do board + MCP/agent loop) so paid value doesn't evaporate when inference is routed elsewhere.</td>
+    </tr>
+    <tr>
+      <td>M4</td>
+      <td><strong>The TAM for the privacy-prosumer slice is indie-scale</strong> (~$53K ARR base case), not SaaS. The dollars/defensibility sit in the compliance-vertical the brief de-prioritizes.</td>
+      <td>Be honest about which business this is; don't over-build SaaS billing for a $53K outcome. Land regulated solos + 2–20-person firms where the gate forces the purchase; grow via <strong>seat-packs</strong> (pure billing, no server). Keep prosumer/MENA as free reach. The bigger TAM (north-star agent/workflow category) is a 12-month bet, not a 4-week launch.</td>
+    </tr>
+    <tr>
+      <td>M5</td>
+      <td><strong>Closed-source is a trust liability in the only niche your wedge fits,</strong> and the conversion thesis assumes month-2–3 retention you have no data for on an untested capture path.</td>
+      <td>Open-source the privacy-critical capture/storage core (or publish a reproducible build + a Little Snitch "zero-egress in local mode" proof) and put it loudly on the roadmap. De-risk retention empirically: <strong>pre-sell the compliance pitch to 5–10 regulated solos</strong> and harden capture in the 30–50 beta so you launch on a build that survived real long meetings.</td>
+    </tr>
+    <tr>
+      <td>P7</td>
+      <td><strong>The 2–4 week timeline is over-stuffed for one person</strong> (realistically 6–10 weeks).</td>
+      <td>Cut to the <strong>four hard gates</strong> (notarized clean-machine install · Groq-default onboarding · Groq fails loud · capture QA+tests) and let everything else slip. Take the 4-week end; the date is soft — ship when the gates are green, not on a calendar promise.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============ 9 ============ -->
+<h2 id="s9">9. 90-Day Success Metrics</h2>
+
+<p><strong>Because the launch is free-only, 90-day success is measured in reach, activation, retention, and validated intent — not MRR.</strong> Pro revenue, if Pro ships around day 30–60, is upside. Targets calibrated for a closed-source solo v1 on organic channels.</p>
+
+<table>
+  <thead><tr><th>Metric</th><th>Floor</th><th>Target</th><th>Stretch</th><th>Why it's the number</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Downloads (90 days)</strong></td><td>2,000</td><td>4,000</td><td>8,000+</td><td>Show HN front page (20–80k visits) + a PH day + directories. Meetily's 252k / Hyprnote's 18k had multi-year OSS/SEO flywheels you don't have yet.</td></tr>
+    <tr><td><strong>Activation (% of downloads reaching a first summary)</strong></td><td>30%</td><td>40%</td><td>50%</td><td>The #1 lever you control; the Groq-default wizard is what lifts it. The single most important number — a download that never summarizes is dead.</td></tr>
+    <tr><td>Local vs Groq split</td><td>—</td><td>measure it</td><td>—</td><td>Tells you how big the no-GPU segment is and how much the bundled-local-model roadmap matters.</td></tr>
+    <tr><td><strong>Crash-free first-run / session</strong></td><td>95%</td><td>98%+</td><td>99%+</td><td>A capture app lives or dies here; a dropped recording is unrecoverable churn.</td></tr>
+    <tr><td><strong>D7 retention</strong></td><td>20%</td><td>30%</td><td>40%</td><td>Proves the habit loop, not just curiosity. The cross-meeting RAG value only compounds for users who come back.</td></tr>
+    <tr><td><strong>D30 retention</strong></td><td>10%</td><td>15%</td><td>25%</td><td>The cohort that will exist at month 2–3 when the cross-meeting "Ask" upgrade lever fires.</td></tr>
+    <tr><td><strong>Pro waitlist signups</strong></td><td>250</td><td>500</td><td>1,000</td><td>~10–15% of activated; the leading indicator of monetizable demand before billing exists.</td></tr>
+    <tr><td><strong>Regulated-pro design partners (paid pre-sales / LOIs)</strong></td><td>3</td><td>5–10</td><td>15</td><td>The real validation of the thesis: does the compliance gate convert to dollars? Worth more than 1,000 free prosumers.</td></tr>
+    <tr><td>GitHub stars (on the open-sourced component)</td><td>200</td><td>750</td><td>2,000+</td><td>Trust proxy + the discovery flywheel that closes the closed-source gap over time.</td></tr>
+    <tr><td>Paid conversion (if Pro live, % of activated)</td><td>3%</td><td>5%</td><td>8%</td><td>Higher end of freemium because the gate targets high-WTP pros — but tempered by free OSS rivals. ~100–400 payers by day 90 in the target case.</td></tr>
+  </tbody>
+  <caption>The two metrics to obsess over: <strong>activation</strong> (40%) and <strong>regulated-pro pre-sales</strong> (5–10). The first proves the product works for the user you invited; the second proves the business thesis. Vanity downloads without either are a failed launch that looked busy.</caption>
+</table>
+
+<!-- ============ 10 ============ -->
+<h2 id="s10">10. Sources</h2>
+
+<h4>Competitors (pricing &amp; positioning, read live June 2026)</h4>
+<ul class="small">
+  <li>Granola — granola.ai/pricing · granola.ai/security · granola.ai/blog/series-c · techcrunch.com (2026-03-25, $125M / $1.5B) · sifted.eu (unicorn)</li>
+  <li>Meetily — meetily.ai · meetily.ai/pricing · github.com/Zackriya-Solutions/meetily · meetily.ai/blog/meetily-10k-github-stars</li>
+  <li>Hyprnote/Anarlog — anarlog.so · anarlog.so/pricing · github.com/fastrepl/anarlog · news.ycombinator.com/item?id=44725306 · pitchbook.com/profiles/company/847247-77</li>
+  <li>Otter — otter.ai/pricing · npr.org/2025/08/15/g-s1-83087 (lawsuit) · natlawreview.com (Otter class action) · case 5:25-cv-06911</li>
+  <li>Fireflies — fireflies.ai/pricing · fireflies.ai/blog/fireflies-1-billion-valuation · commlawgroup.com (Cruz v. Fireflies BIPA complaint) · case 3:25-cv-03399</li>
+  <li>Fathom — fathom.ai/pricing · techcrunch.com/2024/09/19 ($17M Series A) · businesswire.com (Oct 2025 bot-free)</li>
+  <li>tl;dv — tldv.io/app/pricing · tldv.io/features/security-commitment</li>
+  <li>Circleback — circleback.ai/pricing · circleback.ai/blog/seed-funding · security.circleback.ai</li>
+  <li>Supernormal — supernormal.com/pricing · supernormal.com/security · balderton.com ($10M round)</li>
+  <li>Read AI — read.ai/plans-pricing · techcrunch.com/2024/10/28 ($50M Series B, ~$450M)</li>
+</ul>
+
+<h4>Market, privacy &amp; channels</h4>
+<ul class="small">
+  <li>Market sizing — grandviewresearch.com (AI meeting assistant, $21.5B by 2033, 25.8% CAGR) · market.us · gladia.io/meeting-assistant-market-map (survey, switching/priority stats)</li>
+  <li>Privacy backlash — washingtonpost.com/technology/2025/07/02 (bot fatigue + Bilzerian) · uctoday.com (Bilzerian/Otter) · pymnts.com ("Exhibit A") · schneier.com (summarization optimization)</li>
+  <li>Regulatory/professional — nycbar.org Formal Opinion 2025-6 ("deploy AI locally") · law360.com · iatrox.com (on-device clinical AI / HIPAA + all-party-consent) · iapp.org (GDPR/EU AI Act) · lw.com (Nov 2025 Digital Omnibus — loosening, don't overstate)</li>
+  <li>WTP for privacy — Usercentrics/Sapio State of Digital Trust 2026 (~7% premium) via lasvegassun.com (2026-06-24) · Deloitte (privacy paradox) · softwarefinder.com (B2B security in first call &gt;50%)</li>
+  <li>Launch channels — smollaunch.com (Product Hunt) · teract.ai (self-hunt) · flowjam.com (Hacker News front page) · markepear.dev (dev-tool HN launch) · privacyguides.org/tools · launchdirectories.com (AlternativeTo/SaaSHub)</li>
+</ul>
+<p class="small"><strong>Unverified / flagged (do not put on a slide without checking):</strong> Granola's "25 notes lifetime" cap (third-party, not on the official pricing page); WAU/user counts for Granola (~80–100k), Meetily/Hyprnote download &amp; user figures (self-reported); the "Gartner: 40% of enterprises will ban meeting bots by 2025" stat (likely apocryphal); the "62% would pay for a never-stores service" stat (untraceable — use Deloitte instead). Several competitor valuations (Otter, Supernormal, tl;dv, Circleback) are stale or undisclosed.</p>
+
+<div class="footer">
+  <p><strong>Adversaria — Product Success Overview.</strong> Compiled 27 June 2026 by the lead strategist from the product brief, launch brief, competitor + market research corpus, four synthesis sections, and the Feasibility &amp; Market-Reality pressure-tests. Hard numbers are sourced; conflicts and unverified figures are flagged in-line. This plan folds both critiques into the recommendations — it does not append them.</p>
+</div>
+
+</div>
+</body>
+</html>

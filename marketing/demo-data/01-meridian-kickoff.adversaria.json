@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "meeting": {
+    "title": "Meridian Health — patient-intake pilot kickoff",
+    "recorded_at": "2026-07-01T06:00:00+00:00",
+    "duration_seconds": 154.2,
+    "template_used": "client-meeting",
+    "transcript": "Me: Thanks for making time, both of you. Goal today is to agree on the shape of the intake pilot: which clinics, what success looks like, and the privacy constraints.\nThem: From our side the driver is simple. The front-desk team spends about forty minutes per patient on intake paperwork, and half of it is retyping things the patient already told us.\nMe: Understood. Our proposal is to pilot the intake assistant in a limited setting first rather than a big-bang rollout. Two clinics, six weeks, then we review.\nThem: Two clinics works. Riverside and the Oakwood branch are the best candidates — motivated staff, similar patient volume.\nMe: On the privacy side, everything runs on-site. No patient audio or text leaves the clinic network, which should make David's review much easier.\nThem: That's the headline I needed. I'll still run the full security questionnaire, but on-site processing removes the biggest blocker we had with the last vendor.\nMe: For success metrics I'd suggest time-per-intake and staff satisfaction, measured in week one as a baseline and again in week six.\nThem: Add error rates on transferred data. That's what burned us before — fast but wrong is worse than slow.\nMe: Agreed, three metrics then. I'll draft the pilot scope document this week and send the security questionnaire answers along with it.\nThem: I'll get you the current intake workflow diagrams so your team sees what the desk staff actually do today. Warts and all.\nMe: Perfect. Let's reconvene once David has reviewed the questionnaire. Thanks, both.",
+    "transcript_turns": [
+      {
+        "speaker": "Me",
+        "text": "Thanks for making time, both of you. Goal today is to agree on the shape of the intake pilot: which clinics, what success looks like, and the privacy constraints.",
+        "start": 4.0,
+        "end": 16.08
+      },
+      {
+        "speaker": "Them",
+        "text": "From our side the driver is simple. The front-desk team spends about forty minutes per patient on intake paperwork, and half of it is retyping things the patient already told us.",
+        "start": 17.28,
+        "end": 30.2
+      },
+      {
+        "speaker": "Me",
+        "text": "Understood. Our proposal is to pilot the intake assistant in a limited setting first rather than a big-bang rollout. Two clinics, six weeks, then we review.",
+        "start": 32.3,
+        "end": 43.13
+      },
+      {
+        "speaker": "Them",
+        "text": "Two clinics works. Riverside and the Oakwood branch are the best candidates — motivated staff, similar patient volume.",
+        "start": 44.33,
+        "end": 51.83
+      },
+      {
+        "speaker": "Me",
+        "text": "On the privacy side, everything runs on-site. No patient audio or text leaves the clinic network, which should make David's review much easier.",
+        "start": 53.93,
+        "end": 63.52
+      },
+      {
+        "speaker": "Them",
+        "text": "That's the headline I needed. I'll still run the full security questionnaire, but on-site processing removes the biggest blocker we had with the last vendor.",
+        "start": 64.72,
+        "end": 75.13
+      },
+      {
+        "speaker": "Me",
+        "text": "For success metrics I'd suggest time-per-intake and staff satisfaction, measured in week one as a baseline and again in week six.",
+        "start": 77.23,
+        "end": 85.98
+      },
+      {
+        "speaker": "Them",
+        "text": "Add error rates on transferred data. That's what burned us before — fast but wrong is worse than slow.",
+        "start": 87.18,
+        "end": 95.1
+      },
+      {
+        "speaker": "Me",
+        "text": "Agreed, three metrics then. I'll draft the pilot scope document this week and send the security questionnaire answers along with it.",
+        "start": 97.2,
+        "end": 105.95
+      },
+      {
+        "speaker": "Them",
+        "text": "I'll get you the current intake workflow diagrams so your team sees what the desk staff actually do today. Warts and all.",
+        "start": 107.15,
+        "end": 116.32
+      },
+      {
+        "speaker": "Me",
+        "text": "Perfect. Let's reconvene once David has reviewed the questionnaire. Thanks, both.",
+        "start": 118.42,
+        "end": 123.0
+      }
+    ],
+    "summary": "### Overview\nKickoff for the Meridian Health patient-intake pilot. Agreed on a two-clinic,\nsix-week pilot (Riverside and Oakwood) with all processing on-site — no patient\ndata leaves the clinic network. Meridian's driver is intake time: roughly forty\nminutes per patient, half of it re-entry.\n\n### Key points\n- Front-desk staff lose ~20 min/patient to retyping data patients already gave.\n- On-site processing removes the privacy blocker that killed the previous vendor.\n- Success metrics: time-per-intake, staff satisfaction, and data-transfer error\n  rate, baselined in week one and re-measured in week six.\n\n### Decisions\n- Pilot limited to Riverside and Oakwood clinics, six weeks.\n- All audio and text processing stays on the clinic network.\n- Three success metrics, including error rate on transferred data.\n\n### Action items\n- Draft the pilot scope document (Hamza)\n- Send security questionnaire answers (Hamza)\n- Share clinic intake workflow diagrams (Priya)",
+    "attendees": [
+      "Priya Nair",
+      "David Park"
+    ],
+    "user_notes": "",
+    "link": "",
+    "tags": [
+      {
+        "label": "Client",
+        "color": "blue"
+      },
+      {
+        "label": "Kickoff",
+        "color": "green"
+      }
+    ],
+    "action_items": [
+      {
+        "ord": 0,
+        "text": "Draft the pilot scope document",
+        "assignee": "Me",
+        "due": "2026-07-04",
+        "done": true
+      },
+      {
+        "ord": 1,
+        "text": "Send security questionnaire answers",
+        "assignee": "Me",
+        "due": "2026-07-06",
+        "done": true
+      },
+      {
+        "ord": 2,
+        "text": "Share clinic intake workflow diagrams",
+        "assignee": "Priya Nair",
+        "due": "2026-07-08",
+        "done": true
+      }
+    ]
+  }
+}

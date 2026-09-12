@@ -1,0 +1,11 @@
+Me: Let's lock the launch sequence. My instinct is first week of August — the onboarding v2 work lands next week and I don't want to launch on the old flow.
+Them: First week of August works. It gives me two weeks for assets. The critical-path item is the demo video — everything else derives from it.
+Me: Then I record it this week. Ninety seconds, real product, no mockups.
+Them: Exactly. From that one recording I can cut the social clips, the landing-page loop, and the launch-post GIF.
+Me: What does the social calendar look like?
+Them: Two weeks: teaser clips, a founder thread on why we built it, then the launch-day push. I'll draft the full calendar once I have the video.
+Me: Landing page — the hero copy still says 'organize your team's work'. It's true and it's forgettable.
+Them: Rewrite it around the digest, per the retention data. 'Your team's week, summarized every Monday' is the direction I'd test.
+Me: Take that direction. I'll rewrite the hero this week, you draft the calendar, and we review both on Monday.
+Them: One more — the Buildlog podcast slot came through for launch week. I booked it this morning.
+Me: Excellent. That's our third-party credibility beat sorted.

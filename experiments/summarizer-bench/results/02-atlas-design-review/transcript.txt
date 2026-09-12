@@ -1,0 +1,10 @@
+Me: Let's go through the v2 onboarding flow. My main worry from v1 is drop-off — analytics show we lose a third of new users before they create anything.
+Them: Right, and I think the tour is the culprit. Seven steps before you touch the product. My proposal is cutting it to three: workspace name, invite, first project.
+Me: Three steps feels right. What happens to the feature tour content we cut?
+Them: It moves into empty states. Instead of a wizard telling you about templates, the empty project screen shows three starter templates you can click.
+Me: I like that a lot — show, don't tell. Do we have copy for those empty states?
+Them: Not yet. I mocked placeholder text but it needs a real writing pass. Short, verb-first, one line each.
+Me: I'll take the copy. Can you get the Figma updated with the three-step flow so Omar can scope the build?
+Them: Yes, by Friday. One more thing — we should instrument step two properly this time. Last time we shipped onboarding changes blind.
+Me: Agreed. Let's have Omar add drop-off analytics on step two before we ship, not after.
+Them: I'll write the event spec into the Figma file so it's part of the handoff.

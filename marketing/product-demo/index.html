@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Adversaria — product demo</title>
+<!--
+  Programmatic product demo. Follows the beat list in ../demo-video/SCRIPT.md
+  but recreates the UI in HTML rather than screen-recording it — no camera, no
+  VO, deterministic output.
+
+  DELIBERATELY NOT RECREATED: the script's shots 2 and 8 toggle Wi-Fi off to
+  *prove* nothing leaves the machine. Animating that would fabricate evidence
+  rather than illustrate an interface, so the local claim is stated as text and
+  never staged as a demonstration.
+
+  Render:  npx hyperframes@0.7.42 render marketing/product-demo/index.html
+  (Pin 0.7.42 — 0.7.44 forces a managed chrome-headless-shell download that
+  hangs; see docs/HANDOFF.md.)
+-->
+<script src="assets/gsap.min.js"></script>
+<style>
+  :root{
+    --bg:#09090b; --bg2:#121215; --bg3:#1a1a1f; --panel:#10151e;
+    --text:#f4f4f5; --muted:#a1a1aa; --muted2:#6b6b75;
+    --azure:#24a0ed; --blue:#007aff;
+    --line:rgba(255,255,255,.08);
+    --me:#3d97ff; --them:#ff5f57; --ok:#34c759; --warn:#ff9500; --purple:#af52de;
+    --serif:"Instrument Serif","Hoefler Text",Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
+  #root{
+    position:relative;width:1920px;height:1080px;font-family:var(--sans);color:var(--text);
+    background:
+      radial-gradient(1200px 700px at 78% -8%, rgba(36,160,237,.10), transparent 60%),
+      radial-gradient(900px 560px at 4% 8%, rgba(36,160,237,.05), transparent 58%),
+      var(--bg);
+  }
+  .scene{position:absolute;inset:0;opacity:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;padding:80px 96px 240px}
+
+  /* caption band — carries the narrative in place of a voiceover */
+  .cap{position:absolute;left:0;right:0;bottom:84px;text-align:center;
+    font-family:var(--serif);font-size:60px;letter-spacing:-.01em;opacity:0}
+  .cap .it{font-style:italic;color:var(--azure)}
+  .sub{position:absolute;left:0;right:0;bottom:48px;text-align:center;
+    font-family:var(--mono);font-size:19px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--muted2);opacity:0}
+
+  /* app chrome */
+  .win{width:1500px;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+    background:var(--bg2);box-shadow:0 60px 140px -60px #000, 0 0 0 1px rgba(36,160,237,.05)}
+  .tbar{height:44px;background:var(--bg3);display:flex;align-items:center;padding:0 16px;gap:9px;
+    border-bottom:1px solid var(--line)}
+  .tdot{width:12px;height:12px;border-radius:50%}
+  .tbar .name{margin-left:14px;font-family:var(--serif);font-style:italic;color:var(--azure);font-size:20px}
+  .body{display:flex}
+  .side{width:340px;border-right:1px solid var(--line);padding:26px;background:var(--bg2)}
+  .main{flex:1;padding:34px 40px;background:var(--bg)}
+  .rec{border:1px solid rgba(255,95,87,.45);border-radius:10px;padding:11px 14px;
+    display:flex;align-items:center;gap:10px;font-size:16px;color:#ff9a95}
+  .rdot{width:10px;height:10px;border-radius:50%;background:var(--them)}
+  .srow{height:12px;border-radius:6px;background:var(--bg3);margin:14px 0}
+  .nav{display:flex;gap:8px;margin-bottom:22px}
+  .tab{font-size:15px;color:var(--muted);padding:7px 14px;border-radius:8px}
+  .tab.on{background:var(--bg3);color:var(--text)}
+  h3.t{font-family:var(--serif);font-size:52px;margin:6px 0 16px}
+  .sec{font-size:21px;color:var(--muted);margin:16px 0 8px;display:flex;align-items:center;gap:9px}
+  .li{font-size:27px;line-height:1.55;color:#d9d9de;margin:7px 0;opacity:0}
+  .chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:19px;
+    padding:8px 16px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+
+  /* notch pill */
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);
+    background:#000;border-radius:0 0 20px 20px;padding:12px 26px;display:flex;
+    align-items:center;gap:16px;font-family:var(--mono);font-size:20px;opacity:0;
+    border:1px solid rgba(255,255,255,.08);border-top:0}
+  .wave{display:inline-flex;align-items:flex-end;gap:4px;height:24px}
+  .wave i{width:4px;border-radius:2px;display:block;height:6px}
+
+  /* live captions */
+  .live{width:1000px;margin-top:22px;min-height:230px}
+  .lline{display:flex;gap:16px;align-items:flex-start;font-size:30px;line-height:1.5;
+    margin:11px 0;opacity:0}
+  .bar{width:3px;border-radius:2px;align-self:stretch;flex:none}
+
+  /* todo lanes */
+  .lanes{display:flex;gap:22px;width:1560px}
+  .lane{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:26px;min-height:380px}
+  .lane h4{font-family:var(--mono);font-size:18px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--muted2);font-weight:400;margin-bottom:14px}
+  .task{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:18px 20px;
+    font-size:24px;margin-bottom:10px;opacity:0}
+
+  /* graph */
+  .graph{position:relative;width:1300px;height:600px}
+  .node{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:22px;color:#04121e;font-weight:600;opacity:0}
+  .edge{position:absolute;height:1.5px;transform-origin:0 50%;opacity:0;
+    background:linear-gradient(90deg,rgba(36,160,237,.65),rgba(36,160,237,.12))}
+
+  /* real screenshot */
+  .shot{width:1240px;max-height:760px;object-fit:contain;object-position:top;border-radius:16px;border:1px solid var(--line);
+    box-shadow:0 60px 140px -60px #000;display:block}
+
+  /* end card */
+  .big{font-family:var(--serif);font-size:130px;line-height:1;color:var(--azure)}
+  .url{font-family:var(--mono);font-size:26px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="adversaria-demo" data-start="0"
+     data-width="1920" data-height="1080" data-fps="60">
+
+  <!-- 1 · the finished artefact, real -->
+  <section class="scene" id="s1">
+    <img class="shot" src="assets/real-note.png" alt="Adversaria meeting note">
+  </section>
+
+  <!-- 2 · recording -->
+  <section class="scene" id="s2">
+    <div class="win">
+      <div class="tbar">
+        <span class="tdot" style="background:#ff5f57"></span>
+        <span class="tdot" style="background:#febc2e"></span>
+        <span class="tdot" style="background:#28c840"></span>
+        <span class="name">Adversaria</span>
+      </div>
+      <div class="body">
+        <div class="side">
+          <div class="rec"><span class="rdot" id="rdot"></span> Recording · <span id="timer">00:04</span></div>
+          <div class="srow" style="width:80%"></div><div class="srow" style="width:60%"></div>
+          <div class="srow" style="width:72%"></div><div class="srow" style="width:45%"></div>
+        </div>
+        <div class="main">
+          <div class="nav"><span class="tab on">Live</span><span class="tab">Notes</span></div>
+          <div class="live">
+            <div class="lline" id="c1"><span class="bar" style="background:var(--me)"></span>
+              <span>Let's ship the beta on Friday.</span></div>
+            <div class="lline" id="c2"><span class="bar" style="background:var(--them)"></span>
+              <span>I'm Omar, I run growth at Fluence Pay.</span></div>
+            <div class="lline" id="c3"><span class="bar" style="background:var(--me)"></span>
+              <span>I'll email the first ten testers by Thursday.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notch" id="notch">
+      <span class="rdot"></span><span id="ntimer">00:04</span>
+      <span class="wave" id="wave">
+        <i style="background:var(--me)"></i><i style="background:var(--me)"></i><i style="background:var(--me)"></i>
+        <i style="background:var(--them)"></i><i style="background:var(--them)"></i><i style="background:var(--them)"></i>
+      </span>
+    </div>
+  </section>
+
+  <!-- 3 · notes written -->
+  <section class="scene" id="s3">
+    <div class="win">
+      <div class="tbar">
+        <span class="tdot" style="background:#ff5f57"></span>
+        <span class="tdot" style="background:#febc2e"></span>
+        <span class="tdot" style="background:#28c840"></span>
+        <span class="name">Adversaria</span>
+      </div>
+      <div class="body"><div class="main" style="padding:34px 44px">
+        <h3 class="t" id="ntitle">Beta launch sync — Fluence Pay</h3>
+        <div style="display:flex;gap:10px;margin-bottom:6px">
+          <span class="chip" id="att">Omar · Growth · Fluence Pay</span>
+          <span class="chip">Client meeting</span>
+        </div>
+        <div class="sec">Decisions</div>
+        <div class="li" id="d1">Beta invites go out Friday.</div>
+        <div class="sec">Action items</div>
+        <div class="li" id="d2">Email the first ten testers — due Thursday</div>
+        <div class="sec">From your notes</div>
+        <div class="li" id="d3">pricing → decide next week</div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 4 · to-dos -->
+  <section class="scene" id="s4">
+    <div class="lanes">
+      <div class="lane"><h4>Overdue</h4>
+        <div class="task tk">Send the pricing doc</div>
+        <div class="task tk">Confirm the venue</div></div>
+      <div class="lane"><h4>This week</h4>
+        <div class="task tk">Email the first ten testers</div>
+        <div class="task tk">Review legal redlines</div></div>
+      <div class="lane"><h4>Later</h4>
+        <div class="task tk">Schedule the offsite</div></div>
+    </div>
+  </section>
+
+  <!-- 5 · graph -->
+  <section class="scene" id="s5">
+    <div class="graph">
+      <div class="edge eg" style="left:500px;top:290px;width:300px;transform:rotate(-30deg)"></div>
+      <div class="edge eg" style="left:500px;top:290px;width:320px;transform:rotate(24deg)"></div>
+      <div class="edge eg" style="left:500px;top:290px;width:260px;transform:rotate(102deg)"></div>
+      <div class="edge eg" style="left:770px;top:410px;width:270px;transform:rotate(-44deg)"></div>
+      <div class="node nd" style="left:410px;top:205px;width:185px;height:185px;background:var(--azure)">Omar</div>
+      <div class="node nd" style="left:750px;top:350px;width:150px;height:150px;background:var(--me)">Sarah</div>
+      <div class="node nd" style="left:745px;top:75px;width:130px;height:130px;background:var(--ok)">Beta</div>
+      <div class="node nd" style="left:1010px;top:175px;width:116px;height:116px;background:var(--warn)">Pricing</div>
+      <div class="node nd" style="left:420px;top:495px;width:125px;height:125px;background:var(--purple)">Kickoff</div>
+    </div>
+  </section>
+
+  <!-- 6 · ask -->
+  <section class="scene" id="s6">
+    <div style="width:1120px">
+      <div class="win" style="width:100%"><div class="body"><div class="main" style="padding:34px 40px">
+        <div class="sec" style="margin-top:0">You</div>
+        <div style="font-size:30px;margin-bottom:26px">"What did we decide about pricing?"</div>
+        <div class="sec">Answered from your own meetings</div>
+        <div class="li" id="a1" style="font-size:23px">
+          You deferred it — pricing is being decided next week, noted in the Fluence Pay sync.
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px" id="a2">
+          <span class="chip">Beta launch sync · today</span>
+          <span class="chip">Atlas review · Tue</span>
+        </div>
+      </div></div></div>
+    </div>
+  </section>
+
+  <!-- 7 · end -->
+  <section class="scene" id="s7">
+    <div style="text-align:center">
+      <div class="big" id="e1">Free</div>
+      <div class="url" style="margin-top:18px" id="e2">MIT licensed · macOS · Windows next</div>
+      <div style="margin-top:44px;font-family:var(--serif);font-size:44px" id="e3">
+        lagharilabs.com/<span class="it" style="font-style:italic;color:var(--azure)">adversaria</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="cap" id="cap"></div>
+  <div class="sub" id="sub"></div>
+</div>
+
+<script>
+gsap.defaults({ ease:"power3.out" });
+const tl = gsap.timeline({ paused:true });
+window.__timelines = window.__timelines || {};
+window.__timelines["adversaria-demo"] = tl;
+
+const cap = document.getElementById("cap");
+const sub = document.getElementById("sub");
+
+/* Caption band: one line of narrative per beat, since there is no voiceover. */
+function say(t, html, subtitle, hold) {
+  tl.call(() => { cap.innerHTML = html; sub.textContent = subtitle || ""; }, null, t);
+  tl.fromTo(cap, {opacity:0, y:14}, {opacity:1, y:0, duration:.5, overwrite:"auto"}, t);
+  tl.fromTo(sub, {opacity:0}, {opacity:.9, duration:.5, overwrite:"auto"}, t);
+  tl.to([cap, sub], {opacity:0, duration:.4, overwrite:"auto"}, t + (hold || 3.2));
+}
+function scene(id, t, dur) {
+  tl.fromTo(id, {opacity:0}, {opacity:1, duration:.6}, t);
+  tl.to(id, {opacity:0, duration:.5}, t + dur);
+}
+
+/* 1 — the artefact (real screenshot) */
+scene("#s1", 0, 4.6);
+tl.fromTo("#s1 .shot", {scale:1.06, y:20}, {scale:1, y:0, duration:5, ease:"none"}, 0);
+say(.5, "This is a meeting it wrote.", "adversaria", 3.4);
+
+/* 2 — recording */
+scene("#s2", 5.4, 8.4);
+tl.fromTo("#notch", {y:-40, opacity:0}, {y:0, opacity:1, duration:.6}, 5.8);
+tl.to("#rdot", {opacity:.25, duration:.5, repeat:14, yoyo:true}, 5.9);
+// Fixed per-bar heights: a render must be byte-identical across runs, so the
+// waveform is choreographed rather than randomised.
+const WAVE_H = [22, 11, 26, 15, 24, 9];
+tl.to("#wave i", {height:(i) => WAVE_H[i % WAVE_H.length], duration:.22, repeat:34,
+  yoyo:true, stagger:.05}, 5.9);
+["#c1","#c2","#c3"].forEach((s,i) =>
+  tl.fromTo(s, {opacity:0, x:-18}, {opacity:1, x:0, duration:.5}, 7.2 + i*1.7));
+say(6, "No bot joins the call.", "it hears what your mac hears", 3.2);
+say(10.2, "Captions as you speak.", "on your own gpu", 3);
+
+/* 3 — the notes */
+scene("#s3", 14.4, 7.6);
+["#d1","#d2","#d3"].forEach((s,i) =>
+  tl.fromTo(s, {opacity:0, y:12}, {opacity:1, y:0, duration:.5}, 15.6 + i*.9));
+tl.fromTo("#att", {opacity:0, scale:.9}, {opacity:1, scale:1, duration:.6}, 18.6);
+say(15, "Decisions and action items,<br>pulled out for you.", "", 3.4);
+say(19, 'Omar\'s role and company —<br><span class="it">never typed.</span>', "heard in the meeting", 3);
+
+/* 4 — to-dos */
+scene("#s4", 22.6, 5.4);
+tl.fromTo(".tk", {opacity:0, y:20}, {opacity:1, y:0, duration:.5, stagger:.14}, 23.2);
+say(23.4, "Every follow-up, one board.", "across all your meetings", 3.6);
+
+/* 5 — graph */
+scene("#s5", 28.4, 6);
+tl.fromTo(".eg", {opacity:0, scaleX:0}, {opacity:1, scaleX:1, duration:.7, stagger:.1}, 29);
+tl.fromTo(".nd", {opacity:0, scale:.5}, {opacity:1, scale:1, duration:.6, stagger:.12,
+  ease:"back.out(1.6)"}, 29.2);
+say(29.6, "Everyone you meet,<br>wired together.", "built on your machine", 3.8);
+
+/* 6 — ask */
+scene("#s6", 34.8, 6.2);
+tl.fromTo("#a1", {opacity:0}, {opacity:1, duration:.6}, 36);
+tl.fromTo("#a2", {opacity:0, y:10}, {opacity:1, y:0, duration:.5}, 36.9);
+say(35.6, "Ask across everything<br>you've ever recorded.", "answered locally, with sources", 3.8);
+
+/* 7 — end */
+scene("#s7", 41.2, 5.4);
+tl.fromTo("#e1", {opacity:0, scale:.9}, {opacity:1, scale:1, duration:.7}, 41.6);
+tl.fromTo("#e2", {opacity:0}, {opacity:1, duration:.6}, 42.2);
+tl.fromTo("#e3", {opacity:0, y:14}, {opacity:1, y:0, duration:.7}, 42.8);
+
+tl.set({}, {}, 47.2); // hold the final frame
+</script>
+</body>
+</html>

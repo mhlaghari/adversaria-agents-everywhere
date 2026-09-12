@@ -1,0 +1,1200 @@
+"""FastAPI server exposing STT transcription and LLM summarization endpoints."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import signal
+import sys
+import threading
+from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+
+from .live import (
+    LiveCaptionSession,
+    MoonshinePartialEngine,
+    is_filler_hallucination,
+    is_repetition_loop,
+    trim_repetition_loop,
+)
+from .models import (
+    DraftRequest,
+    GenerateTemplateRequest,
+    GenerateTemplateResponse,
+    ChatRequest,
+    ChatResponse,
+    EmbedRequest,
+    EmbedResponse,
+    HealthResponse,
+    LlmHostRequest,
+    LiveFeedRequest,
+    LiveFeedResponse,
+    ModelDownloadRequest,
+    ModelDownloadStatus,
+    SummarizeRequest,
+    SummarizeResponse,
+    TemplateInfo,
+    TemplateSaveRequest,
+    TranscribeChunkRequest,
+    TranscribeChunkResponse,
+    TranscribeRequest,
+    TranscribeResponse,
+    WhisperDownloadRequest,
+    WhisperModelInfo,
+)
+from .model_setup import (
+    LIVE_CAPTIONS_PROFILE_ID,
+    model_download_status,
+    on_download_ready,
+    ready_snapshot_dir,
+    start_model_download,
+)
+from .summarizer import (
+    OllamaSummarizer,
+    configure_local_ollama_host,
+    default_llm_backend,
+)
+from .transcriber import (
+    MlxWhisperTranscriber,
+    WhisperTranscriber,
+    active_whisper_models,
+    create_transcriber,
+    decode_first_asr_window,
+    decode_import_file,
+    default_whisper_key,
+    download_whisper_model,
+    get_cohere_transcriber,
+    get_qwen_transcriber,
+    list_whisper_models,
+    label_mic_only,
+    relabel_me,
+    relabel_turns,
+    transcribe_cloud,
+    whisper_model_is_cached,
+    whisper_engine_for,
+    whisper_repo_for,
+)
+from .config import save_prompt, delete_prompt
+from .embedder import OllamaEmbedder
+
+# uvicorn's --log-level flag configures only uvicorn's OWN loggers; the root
+# logger stays at WARNING, which silently swallowed every diagnostic
+# `logger.info` from src.* in the field — frozen sidecar and dev alike
+# (incl. the adaptive num_ctx line that exists precisely so a field problem
+# can be diagnosed without telemetry). basicConfig is a no-op when a root
+# handler already exists, so callers that configure logging are left alone.
+logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger(__name__)
+
+# Module-level singletons set during lifespan
+_transcriber: WhisperTranscriber | MlxWhisperTranscriber | None = None
+# Dedicated fast model for the live-caption preview (see _build_live_transcriber).
+_live_transcriber: WhisperTranscriber | MlxWhisperTranscriber | None = None
+# English live-caption PREVIEW engine (Moonshine v2 via sherpa-onnx). Independent
+# of the Whisper resident + lock; `_PARTIAL_STATE` is what /health reports
+# while it is None: missing | loading | error.
+_partial_engine: MoonshinePartialEngine | None = None
+_PARTIAL_STATE = "missing"
+_PARTIAL_INIT_LOCK = threading.Lock()
+_summarizer: OllamaSummarizer | None = None
+_embedder: OllamaEmbedder | None = None
+_OLLAMA_HOST = "http://localhost:11434"
+
+# Why `_transcriber` is None right now — the UI renders this state, so a fresh
+# machine reads "no model downloaded yet" instead of a dead service. Values:
+# loading | ready | missing | error. Irrelevant once `_transcriber` is set.
+_TRANSCRIBER_STATE = "loading"
+_TRANSCRIBER_DETAIL: str | None = None
+_INIT_LOCK = threading.Lock()
+
+# Live captions use a small, fast Whisper (turbo-q4): ~0.2 s/utterance and a
+# quick load, so the preview feels live. The accurate large-v3 model stays for
+# the final transcript (turbo drops Arabic diacritics — the user records Arabic).
+_LIVE_WHISPER_REPO = "mlx-community/whisper-large-v3-turbo-q4"
+
+
+def _warm_transcriber(t: object) -> None:
+    """Preload a transcriber's model with a tiny silent clip, so the first real
+    caption isn't a multi-second cold model load. Best-effort."""
+    import os
+    import tempfile
+    import wave
+
+    fd, name = tempfile.mkstemp(suffix=".wav", prefix="mnt_warm_")
+    os.close(fd)
+    try:
+        with wave.open(name, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x00" * 4000)  # 0.25 s of silence
+        t.transcribe(name)  # type: ignore[attr-defined]
+        logger.info("Live-caption model warmed.")
+    except Exception:
+        logger.exception("Live-caption warm-up failed (non-fatal).")
+    finally:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
+
+
+def _build_live_transcriber(
+    main: WhisperTranscriber | MlxWhisperTranscriber,
+) -> WhisperTranscriber | MlxWhisperTranscriber:
+    """A dedicated fast model for live captions. MLX only (Apple Silicon); on
+    other platforms — or if the small model can't be built — live falls back to
+    the main transcriber (previous behavior)."""
+    try:
+        if isinstance(main, MlxWhisperTranscriber):
+            # V3: never download uninvited — mlx-whisper fetches its repo on
+            # first use, so only build the dedicated live model when its
+            # weights are already on disk. Otherwise live reuses the main
+            # model for this session (correct, just slower).
+            if not whisper_model_is_cached(_LIVE_WHISPER_REPO):
+                logger.info(
+                    "Live-caption model not downloaded; live captions use the main model."
+                )
+                return main
+            # drop_no_speech: live-only — drop segments Whisper itself flags
+            # as probable non-speech (hallucinated fillers on breath/noise).
+            live = MlxWhisperTranscriber(
+                model_repo=_LIVE_WHISPER_REPO, drop_no_speech=True
+            )
+            _warm_transcriber(live)  # runs on the warm-up thread, which holds _WHISPER_LOCK
+            logger.info("Live-caption model ready (%s).", _LIVE_WHISPER_REPO)
+            return live
+    except Exception:
+        logger.exception("Live-caption model init failed; live uses the main model.")
+    return main
+
+
+def _set_transcriber_state(state: str, detail: str | None = None) -> None:
+    global _TRANSCRIBER_STATE, _TRANSCRIBER_DETAIL
+    _TRANSCRIBER_STATE = state
+    _TRANSCRIBER_DETAIL = detail
+
+
+def _warm_live_model(main: WhisperTranscriber | MlxWhisperTranscriber) -> None:
+    global _live_transcriber
+    with _WHISPER_LOCK:
+        live = _build_live_transcriber(main)
+    _live_transcriber = live
+
+
+def _init_transcriber(wait: bool = False) -> None:
+    """Load the transcription model if — and only if — it is already on disk.
+
+    Never downloads: model bytes arrive exclusively through the `model_setup`
+    pipeline on an explicit user action (SETUP_REDESIGN_SPEC V3). Before V3
+    this load ran synchronously inside the lifespan and faster-whisper fetched
+    ~3 GB there on a fresh machine — the port stayed unbound for the whole
+    download and a failed fetch killed the process ("Transcriber not
+    initialized" was all a user ever saw of it). Runs on a background thread
+    at startup, again when a whisper download completes, and again on demand
+    from `_require_transcriber`, so the service is reachable within seconds
+    and comes alive without a restart once a model lands.
+
+    `wait=True` blocks for the lock instead of bailing — the download-ready
+    callback must not have its signal dropped just because an (older, doomed)
+    init attempt was mid-flight when the download finished; it waits its turn
+    and re-runs against the now-complete cache.
+    """
+    global _transcriber, _live_transcriber
+    if wait:
+        _INIT_LOCK.acquire()
+    elif not _INIT_LOCK.acquire(blocking=False):
+        return  # an init is already running; it will publish its outcome
+    try:
+        if _transcriber is not None:
+            return
+        _set_transcriber_state("loading")
+        # WHISPER_MODEL / MLX_WHISPER_MODEL are the dev escape hatch: honour
+        # them verbatim (the constructors resolve them) and skip cache checks.
+        env_override = os.environ.get("WHISPER_MODEL") or os.environ.get(
+            "MLX_WHISPER_MODEL"
+        )
+        model_key: str | None = None
+        if not env_override:
+            models = active_whisper_models()
+            cached = [
+                key
+                for key, entry in models.items()
+                if whisper_engine_for(key) == "whisper"
+                and whisper_model_is_cached(entry["repo"])
+            ]
+            if not cached:
+                # A machine with only a Qwen3-ASR or Cohere model on disk CAN
+                # transcribe — those engines are routed per request and never
+                # occupy the resident slot (which live captions need). Report
+                # ready instead of falsely claiming nothing can transcribe;
+                # the resident stays None and live captions silently sit out
+                # until a Whisper model lands. (Founder hit this live on the
+                # 2026-08-17 fresh-account QA: Qwen downloaded, app insisted
+                # "No transcription model is downloaded yet".)
+                alt_cached = [
+                    key
+                    for key, entry in models.items()
+                    if whisper_engine_for(key) in {"qwen3-asr", "cohere"}
+                    and whisper_model_is_cached(entry["repo"])
+                ]
+                if alt_cached:
+                    _set_transcriber_state(
+                        "ready",
+                        "Transcription is ready. Live captions need a Whisper model.",
+                    )
+                    return
+                _set_transcriber_state(
+                    "missing", "No transcription model is downloaded yet."
+                )
+                return
+            default = default_whisper_key()
+            model_key = default if default in cached else cached[0]
+        try:
+            transcriber = create_transcriber(model_key)
+        except Exception:
+            logger.exception("Transcriber init failed")
+            _set_transcriber_state(
+                "error",
+                "The transcription model on this machine could not be loaded. "
+                "Re-download it from Settings.",
+            )
+            return
+        _transcriber = transcriber
+        _live_transcriber = transcriber
+        _set_transcriber_state("ready")
+        logger.info("Transcriber ready (%s).", transcriber.model_size)
+        threading.Thread(
+            target=_warm_live_model,
+            args=(transcriber,),
+            name="live-model-warmup",
+            daemon=True,
+        ).start()
+    finally:
+        _INIT_LOCK.release()
+
+
+def _init_partial_engine() -> None:
+    """Build the preview engine if its pinned model is on disk. Runs on a
+    background thread at startup and again when its download lands; never
+    raises, never downloads."""
+    global _partial_engine, _PARTIAL_STATE
+    if not _PARTIAL_INIT_LOCK.acquire(blocking=False):
+        return
+    try:
+        if _partial_engine is not None:
+            return
+        snapshot = ready_snapshot_dir(LIVE_CAPTIONS_PROFILE_ID)
+        if snapshot is None:
+            _PARTIAL_STATE = "missing"
+            return
+        _PARTIAL_STATE = "loading"
+        try:
+            _partial_engine = MoonshinePartialEngine(snapshot)
+        except Exception:
+            logger.exception("Live-caption preview engine failed to load")
+            _PARTIAL_STATE = "error"
+            return
+        _PARTIAL_STATE = "ready"
+        logger.info("Live-caption preview engine ready (%s).", _partial_engine.name)
+    finally:
+        _PARTIAL_INIT_LOCK.release()
+
+
+def _on_model_download_ready(profile_id: str) -> None:
+    """model_setup callback: a verified download landed — try to come alive."""
+    if profile_id.startswith("whisper") and _transcriber is None:
+        _init_transcriber(wait=True)
+    if profile_id == LIVE_CAPTIONS_PROFILE_ID and _partial_engine is None:
+        _init_partial_engine()
+
+
+class _ModelDownloadPollFilter(logging.Filter):
+    """Drop successful GET /setup/model_download/* polls from the access log.
+
+    The setup status strip polls these endpoints for the whole session —
+    measured 2026-08-02 at 96% of sidecar-log lines (3.3 MB/13 h). Only 2xx
+    GETs are dropped; errors and non-GET requests still log. Uvicorn 0.49.0
+    access records (h11_impl.py:481 / httptools_impl.py:484) carry
+    ``args = (client_addr, method, path_with_query, http_version, status)``
+    with an int status; anything shaped differently passes through untouched.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+        _, method, path, _, status = args
+        return not (
+            method == "GET"
+            and str(path).startswith("/setup/model_download/")
+            and isinstance(status, int)
+            and 200 <= status < 300
+        )
+
+
+#: Module-level singleton: logging.Filterer.addFilter skips an already-added
+#: instance, so repeated lifespans never stack duplicate filters.
+_ACCESS_LOG_POLL_FILTER = _ModelDownloadPollFilter()
+
+
+def _parent_guard_enabled() -> bool:
+    """True when the desktop app spawned this service with the parent-death
+    guard armed (ADVERSARIA_PARENT_GUARD=1, stdin piped from the app). Dev runs
+    (`uv run uvicorn src.server:app` in a terminal) leave it unset, so the
+    guard thread never consumes an interactive stdin."""
+    return os.environ.get("ADVERSARIA_PARENT_GUARD") == "1"
+
+
+def _watch_parent_stdin() -> None:
+    """Block until stdin hits EOF — the parent app is gone — then hard-exit.
+
+    EOF on the inherited stdin pipe means the desktop app died (crash /
+    force-quit) without POSTing /shutdown. os._exit skips graceful teardown on
+    purpose: nothing here is worth flushing compared to not leaking a ~1.6 GB
+    orphaned sidecar (four found resident on 2026-08-02).
+    """
+    try:
+        sys.stdin.buffer.read()
+    except Exception:
+        # NOT parent death. An unusable stdin (None in a windowed frozen build,
+        # a closed/invalid fd, an EDR-interposed handle) used to fall through to
+        # os._exit(0) below, so the sidecar killed itself milliseconds after
+        # every launch — and logged it as though the app had quit. Leave the
+        # process running: `reap_stale_sidecars` on the Rust side is the backstop
+        # for a genuinely orphaned service.
+        logger.warning(
+            "Parent-death guard could not read stdin; staying alive without it.",
+            exc_info=True,
+        )
+        return
+    logger.info("Parent process closed stdin — exiting sidecar.")
+    os._exit(0)
+
+
+def install_parent_guard() -> bool:
+    """Start the parent-death watchdog when armed; report whether it started
+    (always False in dev, where ADVERSARIA_PARENT_GUARD is unset)."""
+    if not _parent_guard_enabled():
+        return False
+    threading.Thread(
+        target=_watch_parent_stdin, name="parent-guard", daemon=True
+    ).start()
+    return True
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize and teardown the ML service singletons.
+
+    The transcriber loads on a background thread so uvicorn binds its port
+    within seconds no matter what — a missing model is a reportable state
+    (`transcriber_state`), never a hang or a dead process.
+    """
+    global _transcriber, _live_transcriber, _partial_engine, _summarizer, _embedder
+    logger.info("Starting ML service lifespan...")
+    logging.getLogger("uvicorn.access").addFilter(_ACCESS_LOG_POLL_FILTER)
+    # Identify this process in the log the app ships with a diagnostics bundle.
+    # It deliberately does NOT go in service-crash.txt: that file is the death
+    # certificate and holds crash evidence only — writing a "starting" line
+    # there truncated the very traceback the app was about to show the user.
+    # The crash hook itself lives at the frozen entry point (run_service.py),
+    # where it also covers import-time deaths that never reach this lifespan.
+    logger.info(
+        "ML service %s starting: pid %d, exe %s, argv %s",
+        app.version,
+        os.getpid(),
+        sys.executable,
+        sys.argv,
+    )
+    install_parent_guard()
+    on_download_ready(_on_model_download_ready)
+    threading.Thread(
+        target=_init_transcriber, name="transcriber-init", daemon=True
+    ).start()
+    threading.Thread(
+        target=_init_partial_engine, name="partial-engine-init", daemon=True
+    ).start()
+    # Backend is platform-resolved: Rapid-MLX (openai) on Apple Silicon, Ollama
+    # elsewhere — unless LLM_BACKEND is set explicitly.
+    _summarizer = OllamaSummarizer(
+        backend=default_llm_backend(), host=_OLLAMA_HOST
+    )
+    _embedder = OllamaEmbedder(host=_OLLAMA_HOST)
+    logger.info("ML service singletons initialized.")
+    yield
+    logger.info("Shutting down ML service lifespan.")
+    _transcriber = None
+    _live_transcriber = None
+    _partial_engine = None
+    _summarizer = None
+    _embedder = None
+
+
+app = FastAPI(
+    title="Adversaria ML Service",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+
+# NOTE on `def` vs `async def`: the heavy endpoints below are deliberately
+# plain `def`. FastAPI runs sync endpoints in its threadpool, so a minutes-long
+# transcription/summarization no longer freezes the whole service (an
+# `async def` body with blocking calls parks the single event-loop thread —
+# live captions, chat, and /health all stalled behind any running job).
+_WHISPER_LOCK = threading.Lock()
+
+
+@app.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    """Return service health status."""
+    whisper_model = "N/A"
+    ollama_available = False
+    status = "degraded"
+
+    if _transcriber is not None:
+        whisper_model = _transcriber.model_size
+    if _summarizer is not None:
+        ollama_available = _summarizer.backend_available()
+
+    if _transcriber is not None and ollama_available:
+        status = "ok"
+
+    embedder_state, embedder_detail = _embedding_health(ollama_available)
+
+    return HealthResponse(
+        status=status,
+        whisper_model=whisper_model,
+        ollama_available=ollama_available,
+        transcriber_state="ready" if _transcriber is not None else _TRANSCRIBER_STATE,
+        transcriber_detail=None if _transcriber is not None else _TRANSCRIBER_DETAIL,
+        embedder_state=embedder_state,
+        embedder_detail=embedder_detail,
+        live_captions_state="ready" if _partial_engine is not None else _PARTIAL_STATE,
+    )
+
+
+def _embedding_health(ollama_available: bool) -> tuple[str, str]:
+    """Check only Ollama's model catalogue; never load the embedding model."""
+    if _embedder is None:
+        return "unavailable", "The semantic-search service is not initialized."
+    if (
+        not ollama_available
+        and _summarizer is not None
+        and _summarizer.backend == "ollama"
+        and _summarizer.host.rstrip("/") == _OLLAMA_HOST.rstrip("/")
+    ):
+        # backend_available() just probed this exact host and found it down.
+        # Don't probe it a second time: on Windows the stacked connect
+        # timeouts pushed /health past the 5 s budget the release smoke
+        # gives it (0.3.81 CI failure, run 32684423145).
+        return "unavailable", "The local engine is not reachable."
+    try:
+        response = httpx.get(f"{_OLLAMA_HOST}/api/tags", timeout=2.0)
+        response.raise_for_status()
+        models = response.json().get("models", [])
+    except Exception:
+        return "unavailable", "The local engine is not reachable."
+    names = {
+        str(model.get("name") or model.get("model") or "").strip()
+        for model in models
+        if isinstance(model, dict)
+    }
+    if any(name == "bge-m3" or name.startswith("bge-m3:") for name in names):
+        return "ready", "bge-m3 is ready for semantic search."
+    return "missing", "bge-m3 is not downloaded."
+
+
+@app.post("/setup/llm_host")
+def setup_llm_host(request: LlmHostRequest) -> dict[str, str]:
+    """Register the app-owned loopback Ollama host for chat and embeddings."""
+    global _OLLAMA_HOST
+    try:
+        normalized = configure_local_ollama_host(request.ollama_host)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _OLLAMA_HOST = normalized
+    if _summarizer is not None:
+        _summarizer.set_ollama_host(normalized)
+    if _embedder is not None:
+        _embedder.set_default_host(normalized)
+    return {"ollama_host": normalized}
+
+
+# ---------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------
+
+
+@app.get("/templates", response_model=list[TemplateInfo])
+async def list_templates() -> list[TemplateInfo]:
+    """List available prompt template names and descriptions."""
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+    return _summarizer.list_templates()
+
+
+@app.get("/templates/{name}")
+async def get_template(name: str) -> dict[str, str]:
+    """Return the raw content of a prompt template by name."""
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+    try:
+        content = _summarizer._load_template(name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"name": name, "content": content}
+
+
+@app.put("/templates/{name}")
+async def put_template(name: str, request: TemplateSaveRequest) -> dict[str, str]:
+    """Create or overwrite a prompt template."""
+    try:
+        save_prompt(name, request.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"name": name, "status": "saved"}
+
+
+@app.delete("/templates/{name}")
+async def remove_template(name: str) -> dict[str, str]:
+    """Delete a prompt template."""
+    try:
+        delete_prompt(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"name": name, "status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Chat
+# ---------------------------------------------------------------------------
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    """Answer a question grounded in a single meeting's transcript."""
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+
+    try:
+        return _summarizer.chat(
+            transcript=request.transcript,
+            question=request.question,
+            model=request.model,
+            base_url=request.llm_base_url,
+            api_key=request.llm_api_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Chat failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/chat_stream")
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """Stream a grounded chat answer token-by-token as Server-Sent Events.
+
+    Each frame is `data: {"t": "<token>"}`; the stream ends with `data: [DONE]`.
+    Errors arrive as `data: {"error": "<message>"}` so the client can show them
+    inline rather than failing the whole request.
+    """
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+
+    summarizer = _summarizer
+
+    def generate():
+        try:
+            sent = 0
+            for attempt in range(2):
+                for token in summarizer.chat_stream(
+                    transcript=request.transcript,
+                    question=request.question,
+                    model=request.model,
+                    base_url=request.llm_base_url,
+                    api_key=request.llm_api_key,
+                ):
+                    sent += 1
+                    yield f"data: {json.dumps({'t': token})}\n\n"
+                if sent:
+                    break
+                # A completed stream with zero tokens means the model server
+                # aborted the request (e.g. batch error under load) without
+                # reporting an error. One immediate retry usually succeeds —
+                # the server recovers right after clearing its batch.
+                logger.warning("chat_stream yielded no tokens; retrying once")
+            if sent:
+                yield "data: [DONE]\n\n"
+            else:
+                yield f"data: {json.dumps({'error': 'The local model returned an empty answer (it may have been interrupted under load) — please try again.'})}\n\n"
+        except Exception as exc:  # surface inline instead of failing the request
+            logger.exception("Chat stream failed")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.post("/draft_stream")
+async def draft_stream(request: DraftRequest) -> StreamingResponse:
+    """Stream a workspace deliverable draft token-by-token as Server-Sent Events."""
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+
+    summarizer = _summarizer
+
+    def generate():
+        try:
+            sent = 0
+            for attempt in range(2):
+                for token in summarizer.draft_stream(
+                    brief=request.brief,
+                    instruction=request.instruction,
+                    model=request.model,
+                    base_url=request.llm_base_url,
+                    api_key=request.llm_api_key,
+                ):
+                    sent += 1
+                    yield f"data: {json.dumps({'t': token})}\n\n"
+                if sent:
+                    break
+                logger.warning("draft_stream yielded no tokens; retrying once")
+            if sent:
+                yield "data: [DONE]\n\n"
+            else:
+                yield f"data: {json.dumps({'error': 'The local model returned an empty draft (it may have been interrupted under load) — please try again.'})}\n\n"
+        except Exception as exc:  # surface inline instead of failing the request
+            logger.exception("Draft stream failed")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Embed
+# ---------------------------------------------------------------------------
+
+
+@app.post("/embed", response_model=EmbedResponse)
+def embed(request: EmbedRequest) -> EmbedResponse:
+    """Embed a batch of texts with the local Ollama embedding model."""
+    if _embedder is None:
+        raise HTTPException(status_code=503, detail="Embedder not initialized")
+    if not request.texts:
+        raise HTTPException(status_code=400, detail="texts must be a non-empty list")
+    if len(request.texts) > 128:
+        raise HTTPException(status_code=400, detail="texts: at most 128 per request")
+    try:
+        embeddings, model = _embedder.embed(
+            request.texts,
+            request.model,
+            host=request.ollama_host or _OLLAMA_HOST,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    dim = len(embeddings[0]) if embeddings and embeddings[0] else 0
+    return EmbedResponse(embeddings=embeddings, model=model, dim=dim)
+
+
+# ---------------------------------------------------------------------------
+# Transcribe
+# ---------------------------------------------------------------------------
+
+
+def _require_transcriber() -> WhisperTranscriber | MlxWhisperTranscriber:
+    """The loaded transcriber, or a structured 503 saying why there is none.
+
+    Retries init synchronously first — the model may have arrived since the
+    last attempt (downloaded from Settings moments ago), so a waiting meeting
+    heals on its next try without restarting anything. The detail is a
+    machine-readable code + human message; Rust translates the code and never
+    shows a raw body (the friend of 2026-07-31 got the old bare string pasted
+    verbatim into the UI).
+    """
+    if _transcriber is None and _TRANSCRIBER_STATE in {"missing", "error"}:
+        _init_transcriber()
+    t = _transcriber
+    if t is not None:
+        return t
+    if _TRANSCRIBER_STATE == "ready":
+        # Ready-without-resident: only Qwen3-ASR/Cohere models are on disk.
+        # Requests routed to those engines never reach this guard; a request
+        # that needs resident Whisper cannot run until one is downloaded.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "transcriber_missing",
+                "message": "No Whisper model is downloaded yet.",
+            },
+        )
+    code = {
+        "loading": "transcriber_loading",
+        "missing": "transcriber_missing",
+    }.get(_TRANSCRIBER_STATE, "transcriber_error")
+    message = _TRANSCRIBER_DETAIL or {
+        "transcriber_loading": "The transcription engine is still starting up.",
+        "transcriber_missing": "No transcription model is downloaded yet.",
+    }.get(code, "The transcription engine failed to load.")
+    raise HTTPException(status_code=503, detail={"code": code, "message": message})
+
+
+_COHERE_LANGUAGES = frozenset(
+    {"en", "fr", "de", "it", "es", "pt", "el", "nl", "pl", "zh", "ja", "ko", "vi", "ar"}
+)
+
+
+def _detect_cohere_language(
+    resident: WhisperTranscriber | MlxWhisperTranscriber | None,
+    audio_path: str,
+) -> str:
+    """Detect Cohere's required language from the first 30 seconds via Whisper."""
+    detected = "en"
+    via = "fallback"
+    if resident is None:
+        logger.info("Cohere language detection unavailable; using fallback en.")
+    else:
+        first_window = None
+        try:
+            first_window = decode_first_asr_window(audio_path)
+            language = (resident.transcribe(str(first_window)).language or "").strip()
+            if language:
+                detected = language.lower().replace("_", "-").split("-", 1)[0]
+                via = "whisper"
+            else:
+                logger.info("Cohere language detection returned empty; using fallback en.")
+        except Exception:
+            logger.info("Cohere language detection failed; using fallback en.")
+        finally:
+            if first_window is not None:
+                first_window.unlink(missing_ok=True)
+    logger.info("Cohere language: detected=%s via=%s", detected, via)
+    return detected
+
+
+@app.post("/transcribe", response_model=TranscribeResponse)
+def transcribe(request: TranscribeRequest) -> TranscribeResponse:
+    """Transcribe an audio file on disk using faster-whisper.
+
+    The Tauri backend and this service run on the same machine, so the
+    audio is passed by path rather than uploaded. Local inference is
+    serialized by `_WHISPER_LOCK`: the endpoint mutates shared transcriber
+    state (initial_prompt, model_repo) and one GPU can't run two Whisper
+    jobs anyway.
+    """
+    audio_path = request.audio_path.strip() if request.audio_path is not None else None
+    mic_audio_path = (
+        request.mic_audio_path.strip() if request.mic_audio_path is not None else None
+    )
+    if request.audio_path is not None and not audio_path:
+        raise HTTPException(status_code=400, detail="audio_path is required")
+    if request.mic_audio_path is not None and not mic_audio_path:
+        raise HTTPException(status_code=400, detail="mic_audio_path is required")
+
+    # Single-file import path: decode in-process, then transcribe as plain
+    # single-track (no mic, no dual merge).
+    if request.single_file:
+        if audio_path is None:
+            raise HTTPException(
+                status_code=400, detail="audio_path is required for a single-file import"
+            )
+        t = _require_transcriber()
+        try:
+            tmp_wav = decode_import_file(audio_path)
+            try:
+                with _WHISPER_LOCK:
+                    result = t.transcribe(str(tmp_wav))
+                return result
+            finally:
+                tmp_wav.unlink(missing_ok=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Import transcription failed")
+            raise HTTPException(
+                status_code=500, detail=f"Transcription failed: {exc}"
+            ) from exc
+
+    # Cloud transcription (Bring-Your-Own-Key, e.g. Groq): upload audio to an
+    # OpenAI-compatible endpoint instead of running local Whisper. No on-device
+    # diarization in this mode, and the audio leaves the device. Checked BEFORE
+    # the local-transcriber guard: cloud needs no local model, and until V3 a
+    # missing local model wrongly 503'd BYOK users too.
+    cloud_url = (request.transcription_base_url or "").strip()
+    if cloud_url:
+        try:
+            logger.info("Transcribing via cloud endpoint: %s", cloud_url)
+            result = transcribe_cloud(
+                audio_path,
+                mic_audio_path,
+                base_url=cloud_url,
+                api_key=(request.transcription_api_key or "").strip(),
+                model=(request.transcription_model or "whisper-large-v3").strip(),
+            )
+            result.text = relabel_me(result.text, request.me_label)
+            result.turns = relabel_turns(result.turns, request.me_label)
+            return result
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Cloud transcription failed")
+            raise HTTPException(
+                status_code=502, detail=f"Cloud transcription failed: {exc}"
+            ) from exc
+
+    requested_engine = whisper_engine_for(request.whisper_model)
+    if request.whisper_model and requested_engine in {"cohere", "qwen3-asr"}:
+        # These engines don't need the resident Whisper (Cohere only borrows
+        # it for language detection, with a fallback) — a missing resident
+        # must not block them on a machine that has their weights cached.
+        try:
+            resident = _require_transcriber()
+        except HTTPException as exc:
+            if exc.status_code != 503:
+                raise
+            resident = None
+    else:
+        resident = _require_transcriber()
+
+    # The per-request mutation of the shared transcriber (vocabulary prompt,
+    # model repo) is only safe while no other request runs — hold the lock for
+    # the whole mutate → transcribe → restore span.
+    with _WHISPER_LOCK:
+        t = resident
+        if request.whisper_model and requested_engine == "qwen3-asr":
+            try:
+                t = get_qwen_transcriber(whisper_repo_for(request.whisper_model))
+            except RuntimeError:
+                if resident is None:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="The selected Qwen3-ASR model is not downloaded.",
+                    )
+                logger.warning(
+                    "Whisper model %s is not downloaded; using %s instead.",
+                    request.whisper_model,
+                    resident.model_size,
+                )
+        elif request.whisper_model and requested_engine == "cohere":
+            detected = _detect_cohere_language(resident, audio_path or mic_audio_path)
+            if detected not in _COHERE_LANGUAGES:
+                logger.info(
+                    "Cohere does not support detected language %s; using resident "
+                    "Whisper for the whole job.",
+                    detected,
+                )
+                t = resident
+            else:
+                try:
+                    t = get_cohere_transcriber(
+                        whisper_repo_for(request.whisper_model)
+                    )
+                    t.language = detected
+                except RuntimeError:
+                    if resident is None:
+                        raise HTTPException(
+                            status_code=503,
+                            detail="The selected Cohere Transcribe model is not downloaded.",
+                        )
+                    logger.warning(
+                        "Whisper model %s is not downloaded; using %s instead.",
+                        request.whisper_model,
+                        resident.model_size,
+                    )
+                    t = resident
+        if t is None:
+            raise HTTPException(
+                status_code=503,
+                detail="A resident Whisper model is required for this language.",
+            )
+        vocab = (request.vocabulary or "").strip()
+        t.initial_prompt = f"Glossary: {vocab}" if vocab else None
+        # On-device model selection. The two backends need different handling:
+        # MLX loads per call, so we swap the repo for this request and restore it
+        # after; faster-whisper holds one loaded model for the process lifetime,
+        # so it reloads and *keeps* the new choice (see `ensure_model_repo`).
+        # Before this split the picker was a silent no-op on Windows — the
+        # assignment below landed on an attribute faster-whisper never reads.
+        original_repo = getattr(t, "model_repo", None)
+        if request.whisper_model and requested_engine == "whisper":
+            repo = whisper_repo_for(request.whisper_model)
+            if isinstance(t, MlxWhisperTranscriber):
+                # mlx-whisper downloads its repo at call time — never let a
+                # picked-but-not-downloaded model start a hidden fetch (V3).
+                if whisper_model_is_cached(repo):
+                    t.model_repo = repo
+                else:
+                    logger.warning(
+                        "Whisper model %s is not downloaded; using %s instead.",
+                        request.whisper_model,
+                        t.model_repo,
+                    )
+            else:
+                t.ensure_model_repo(repo)
+        try:
+            logger.info("Transcribing audio file: %s", audio_path or mic_audio_path)
+            if audio_path is None:
+                result = label_mic_only(t.transcribe(mic_audio_path))
+            elif mic_audio_path:
+                result = t.transcribe_dual(
+                    audio_path, mic_audio_path, diarize=request.diarize
+                )
+            else:
+                result = t.transcribe(audio_path)
+            result.text = relabel_me(result.text, request.me_label)
+            result.turns = relabel_turns(result.turns, request.me_label)
+            return result
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Transcription failed")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        finally:
+            t.initial_prompt = None
+            if original_repo is not None:
+                t.model_repo = original_repo
+
+
+@app.get("/whisper_models", response_model=list[WhisperModelInfo])
+def whisper_models() -> list[WhisperModelInfo]:
+    """Curated on-device Whisper models with download status (for the picker)."""
+    return [WhisperModelInfo(**m) for m in list_whisper_models()]
+
+
+@app.post("/whisper_download")
+def whisper_download(request: WhisperDownloadRequest) -> dict:
+    """Proactively download a Whisper model so it's ready before recording."""
+    try:
+        download_whisper_model(request.model)
+        return {"ok": True}
+    except Exception as exc:
+        logger.exception("Whisper model download failed")
+        raise HTTPException(status_code=502, detail=f"Download failed: {exc}") from exc
+
+
+@app.post("/setup/model_download", response_model=ModelDownloadStatus)
+def setup_model_download(request: ModelDownloadRequest) -> ModelDownloadStatus:
+    """Start or resume one app-owned, immutable model snapshot."""
+    try:
+        return ModelDownloadStatus(**start_model_download(request.profile_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/setup/model_download/{profile_id}/reset", response_model=ModelDownloadStatus)
+def setup_model_download_reset(profile_id: str, force: bool = False) -> ModelDownloadStatus:
+    """Clear stuck incomplete blobs and reset status so user can retry (Phase 1.3)."""
+    try:
+        from .model_setup import reset_model_download
+
+        return ModelDownloadStatus(**reset_model_download(profile_id, force=force))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/setup/model_download/{profile_id}", response_model=ModelDownloadStatus)
+def setup_model_download_status(profile_id: str) -> ModelDownloadStatus:
+    """Return aggregate setup progress without exposing cache paths."""
+    try:
+        return ModelDownloadStatus(**model_download_status(profile_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Transcribe chunk (live caption preview)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/transcribe_chunk", response_model=TranscribeChunkResponse)
+def transcribe_chunk(request: TranscribeChunkRequest) -> TranscribeChunkResponse:
+    """Transcribe a short rolling audio window for the live-caption preview.
+
+    Best-effort: any failure returns empty text (HTTP 200) so the live preview
+    degrades silently instead of error-spamming the client. The authoritative
+    transcript is produced by /transcribe at stop, not here. When a full
+    /transcribe holds the Whisper lock, the chunk is SKIPPED (empty text)
+    rather than queued — captions poll every ~12 s, so queuing would pile up
+    stale windows behind a minutes-long job.
+    """
+    if _transcriber is None:
+        return TranscribeChunkResponse(text="")
+    if not request.audio_path.strip():
+        return TranscribeChunkResponse(text="")
+    if not _WHISPER_LOCK.acquire(blocking=False):
+        return TranscribeChunkResponse(text="")
+    try:
+        result = _transcriber.transcribe(request.audio_path)
+        return TranscribeChunkResponse(text=result.text)
+    except Exception:
+        logger.exception("Live chunk transcription failed (non-fatal)")
+        return TranscribeChunkResponse(text="")
+    finally:
+        _WHISPER_LOCK.release()
+
+
+# ---------------------------------------------------------------------------
+# Live feed (VAD-gated captions — transcribe each utterance exactly once)
+# ---------------------------------------------------------------------------
+
+# One recording is live at a time; the Rust side's recording epoch arrives as
+# `session` and a new value resets this state. System audio ("them") and the
+# microphone ("me") are fed as separate sources so the user's OWN speech is
+# captioned too — each source is VAD-segmented in its own session (mixing the
+# two streams would fight sample-rate/alignment and lose the You/Them split).
+# Only ever two keys ("them", "me"); each self-resets when the epoch changes.
+_live_sessions: dict[str, LiveCaptionSession] = {}
+
+
+@app.post("/live_feed", response_model=LiveFeedResponse)
+def live_feed(request: LiveFeedRequest) -> LiveFeedResponse:
+    """Ingest live audio and return confirmed Whisper captions plus an English
+    Moonshine preview of the current utterance. The preview is independent of
+    the Whisper lock, so long transcription jobs delay confirmations only."""
+    if not request.audio_path.strip():
+        return LiveFeedResponse()
+    try:
+        session = _live_sessions.setdefault(request.source, LiveCaptionSession())
+        session.ingest(request.session, request.audio_path)
+        utterances, watermark = session.pending_utterances()
+        captions: list[str] = []
+        if (
+            utterances
+            and _live_transcriber is not None
+            and _WHISPER_LOCK.acquire(blocking=False)
+        ):
+            try:
+                for start, end in utterances:
+                    wav = session.write_utterance_wav(start, end)
+                    try:
+                        result = _live_transcriber.transcribe(str(wav))
+                        text = result.text.strip()
+                        session.note_confirmed_language(
+                            getattr(result, "language", "") or ""
+                        )
+                        # Preview-only cosmetic gates (unchanged): Whisper's
+                        # noise fillers and repetition loops never caption.
+                        if (
+                            text
+                            and not is_filler_hallucination(text)
+                            and not is_repetition_loop(text)
+                        ):
+                            captions.append(text)
+                    finally:
+                        wav.unlink(missing_ok=True)
+                session.advance(watermark)
+            finally:
+                _WHISPER_LOCK.release()
+        # Preview of what is being said right now — outside the Whisper lock,
+        # so a running /transcribe delays confirmations, never the preview.
+        partial = ""
+        if _partial_engine is not None and session.partials_enabled:
+            tail = session.unconfirmed_tail()
+            if len(tail):
+                partial = trim_repetition_loop(_partial_engine.decode(tail))
+                if is_filler_hallucination(partial) or is_repetition_loop(partial):
+                    partial = ""
+        return LiveFeedResponse(captions=captions, partial=partial)
+    except Exception:
+        logger.exception("Live feed failed (non-fatal)")
+        return LiveFeedResponse()
+
+
+# ---------------------------------------------------------------------------
+# Summarize
+# ---------------------------------------------------------------------------
+
+
+@app.post("/generate-template", response_model=GenerateTemplateResponse)
+def generate_template(request: GenerateTemplateRequest) -> GenerateTemplateResponse:
+    """Draft a note template from a plain-language description.
+
+    Returns the text only — nothing is written to the prompts directory. The user
+    reviews it in the editor and names it, so a bad draft costs nothing.
+    """
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+
+    try:
+        template = _summarizer.generate_template(
+            description=request.description,
+            model=request.model,
+            base_url=request.llm_base_url,
+            api_key=request.llm_api_key,
+            example_template=request.example_template,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return GenerateTemplateResponse(template=template)
+
+
+@app.post("/summarize", response_model=SummarizeResponse)
+def summarize(request: SummarizeRequest) -> SummarizeResponse:
+    """Summarize a meeting transcript using the configured LLM template."""
+    if _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+
+    try:
+        return _summarizer.summarize(
+            transcript=request.transcript,
+            template_name=request.template_name,
+            model=request.model,
+            output_language=request.output_language,
+            user_notes=request.user_notes,
+            attached_context=request.attached_context,
+            base_url=request.llm_base_url,
+            api_key=request.llm_api_key,
+            known_attendees=request.known_attendees,
+            category_hint=request.category_hint,
+            auto_template=request.auto_template,
+            viewer_label=request.viewer_label,
+            meeting_date=request.meeting_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Summarization failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/shutdown")
+async def shutdown() -> dict[str, str]:
+    """Gracefully stop the service. Used by the desktop app when it exits so the
+    bundled sidecar process doesn't linger. Replies first, then signals itself."""
+    logger.info("Shutdown requested.")
+    threading.Timer(0.2, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
+    return {"status": "shutting down"}
+
+
+def main() -> None:
+    """Run the service as a standalone binary (used by the packaged sidecar).
+    Normal dev still uses `uvicorn src.server:app`; this only adds a CLI entry
+    point with a configurable --port so Rust can spawn it on a free port."""
+    import argparse
+
+    import uvicorn
+
+    parser = argparse.ArgumentParser(description="Adversaria ML service")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=9876)
+    args = parser.parse_args()
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+
+if __name__ == "__main__":
+    main()
