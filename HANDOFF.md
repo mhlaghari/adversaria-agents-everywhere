@@ -1,6 +1,26 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
-> **CURRENT — 2026-09-12 15:32 GST: fixed the reported AI Tinkerers chat answer and
+> **CURRENT — 2026-09-12 15:42 GST: README screenshot and Codex/sponsor credits
+> committed and pushed to `origin/main`; presentation simplification is still a proposal.**
+
+- README now shows the existing desktop meeting-note screenshot from
+  `marketing/product-demo/assets/real-note.png`, captioned accurately as the
+  existing app view (`53bcbf1`). A fresh Copilot/Workspaces screenshot remains optional.
+- README explicitly says the CLI was built using **OpenAI Codex** and integrates
+  hackathon sponsors **OpenRouter** for speech/model responses and **Exa AI** for
+  search/research (`d76292e`). Whitespace checks passed; these were documentation edits.
+- The founder is brainstorming a single pain-point slide. Suggested sentence:
+  "Every meeting leaves me with hours of follow-up, while my own projects wait."
+  No slide files changed; the reviewed eight-slide deck remains available as backup.
+- Next: settle the presentation format and rehearse the live demo. The founder's
+  latest stated deadline is **16:30 GST**, superseding the earlier timing below.
+- Separate working-tree work is present in `cli/adversaria_cli/dashboard.py`,
+  `cli/adversaria_cli/store.py` and new `cli/adversaria_cli/workspace_dashboard.py`.
+  It is outside this documentation checkpoint and has not been verified here;
+  coordinate with its owning worker before staging. Earlier test counts describe
+  the committed CLI, not these pending changes.
+
+> **CHAT FIX CHECKPOINT — 2026-09-12 15:32 GST: fixed the reported AI Tinkerers chat answer and
 > enabled automatic Exa lookup as requested. Installed CLI refreshed.**
 
 - Ordinary questions previously never called Exa, and common query words pulled

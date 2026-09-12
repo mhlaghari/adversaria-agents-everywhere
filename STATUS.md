@@ -1,6 +1,19 @@
 # STATUS (hackathon repo)
 
-> **Current — 2026-09-12 15:32 GST: automatic Exa lookup enabled at the owner's
+> **Current — 2026-09-12 15:42 GST: README updates pushed through `d76292e`.
+> Latest founder deadline: 16:30 GST.**
+
+| Work | Status | Evidence / next step |
+| --- | --- | --- |
+| Desktop screenshot in README | Pushed | Existing meeting-note screenshot, accurately captioned; `53bcbf1` |
+| CLI built with Codex; OpenRouter and Exa AI sponsor credits | Pushed | README wording and integration table; `d76292e`; whitespace checks passed |
+| Automatic Exa and AI Tinkerers answer fix | Pushed and installed | `3b4df85`; 75 CLI tests and live synthetic/public regression checks passed |
+| One-sentence pain-point slide | Brainstorming | Suggested: "Every meeting leaves me with hours of follow-up, while my own projects wait." No deck edits made |
+| Existing Laghari Labs presentation | Ready | Eight reviewed slides; PowerPoint, PDF, offline HTML and notes |
+| Separate CLI workspace dashboard changes | In progress; unverified here | Working-tree edits to `dashboard.py`, `store.py`, and new `workspace_dashboard.py`; coordinate with owning worker |
+| Demo rehearsal and submission | Next | Rehearse against the latest stated 16:30 GST deadline; a repo push does not submit the entry |
+
+> **Chat fix checkpoint — 2026-09-12 15:32 GST: automatic Exa lookup enabled at the owner's
 > request. The AI Tinkerers question now returns the community's description
 > with official sources, instead of Hamza's project description.**
 
