@@ -2870,7 +2870,9 @@ dependencies = [
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
  "tokio",
+ "tokio-util",
  "url",
+ "uuid",
  "windows 0.58.0",
  "winreg 0.52.0",
 ]

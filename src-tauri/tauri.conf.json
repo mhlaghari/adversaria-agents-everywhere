@@ -29,7 +29,16 @@
     },
     "macOS": {
       "minimumSystemVersion": "14.4"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["adversaria"],
+        "name": "Adversaria document",
+        "description": "Adversaria meeting notes",
+        "role": "Editor",
+        "mimeType": "application/vnd.adversaria+json"
+      }
+    ]
   },
   "plugins": {
     "updater": {

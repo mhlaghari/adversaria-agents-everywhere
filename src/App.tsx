@@ -40,11 +40,14 @@ import {
   setMeetingArchived,
   setMeetingLocked,
   updateAttendees,
+  importAdversaria,
   importAudio,
-  importMeetingBundle,
   pickAudioFile,
   biometricAuthenticate,
   clearMeetingFolder,
+  copilotAskLast,
+  copilotCancel,
+  copilotRetry,
   createFolder,
   deleteFolder,
   listMeetingFolders,
@@ -56,12 +59,17 @@ import { verifyPin } from "./lib/pin";
 import { setDateFormat } from "./lib/dateFormat";
 import type {
   AttachmentDraft,
+  CopilotAnswerEvent,
+  CopilotCard,
   Meeting,
   MeetingFolder,
   PromptTemplate,
   FolderSuggestion,
   FolderSummary,
 } from "./types";
+import { applyCopilotAnswerEvent, upsertCopilotCard } from "./lib/copilotAnswer";
+import { useCopilotLiveContext } from "./hooks/useCopilotLiveContext";
+import { useAdversariaOpen } from "./hooks/useAdversariaOpen";
 
 // Secondary views are intentionally split from the startup/recording path.
 // GraphView alone pulls in Cytoscape; Settings is also large. Loading them only
@@ -161,6 +169,7 @@ function App() {
     stopMs: SILENCE_STOP_MS,
   });
   const [todosScope, setTodosScope] = useState<number | null>(null);
+  const [copilotCards, setCopilotCards] = useState<CopilotCard[]>([]);
 
   const {
     status,
@@ -172,17 +181,49 @@ function App() {
     settledTick,
     lastSettledId,
     lastDiscardedId,
+    copilotSessionId,
     start,
     stop,
     dismissError,
     dismissRosterSuggestion,
   } = useRecording();
+  const currentCopilotSessionRef = useRef<string | null>(null);
+  currentCopilotSessionRef.current = copilotSessionId;
   const lastActivityRef = useRef(Date.now());
   const { meetings, selectedMeeting, selectMeeting, clearSelection, refresh } =
     useMeetings();
   const [folders, setFolders] = useState<FolderSummary[]>([]);
   const [meetingFolders, setMeetingFolders] = useState<MeetingFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [recordingFolderId, setRecordingFolderId] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem("copilot.lastFolderId");
+      if (raw == null) return null;
+      const parsed = parseInt(raw, 10);
+      return Number.isNaN(parsed) ? null : parsed;
+    } catch {
+      return null;
+    }
+  });
+  const recordingFolderIdRef = useRef<number | null>((() => {
+    try {
+      const raw = localStorage.getItem("copilot.lastFolderId");
+      if (raw == null) return null;
+      const parsed = parseInt(raw, 10);
+      return Number.isNaN(parsed) ? null : parsed;
+    } catch {
+      return null;
+    }
+  })());
+  recordingFolderIdRef.current = recordingFolderId;
+  useEffect(() => {
+    try {
+      if (recordingFolderId == null) return;
+      localStorage.setItem("copilot.lastFolderId", String(recordingFolderId));
+    } catch {}
+  }, [recordingFolderId]);
+  const selectedFolderIdRef = useRef<number | null>(null);
+  selectedFolderIdRef.current = selectedFolderId;
   const [foldersLoaded, setProjectsLoaded] = useState(false);
   const [folderSuggestions, setFolderSuggestions] = useState<
     Map<number, FolderSuggestion | null>
@@ -329,7 +370,7 @@ function App() {
 
   const stopWithPendingAttachments = useCallback(
     async (templateName?: string, notes?: string) => {
-      await stop(templateName, notes, pendingAttachmentsRef.current);
+      await stop(templateName, notes, pendingAttachmentsRef.current, recordingFolderIdRef.current);
       setPendingAttachments([]);
     },
     [stop],
@@ -439,11 +480,37 @@ function App() {
     }
   }, [status]);
 
+  // Clear copilot cards on recording start (where liveLines/livePartials are cleared)
+  // New recording clears cards BEFORE accepting its session; delayed A deltas never mutate B
+  useEffect(() => {
+    if (status === "recording") {
+      setCopilotCards([]);
+    }
+  }, [status]);
+
+  // Live copilot context push (debounced) + copilot-card event listener
+  useCopilotLiveContext({
+    status,
+    copilotSessionId,
+    recordingFolderId,
+    userNotes,
+    pendingAttachments,
+  });
+
+  useAdversariaOpen({
+    refresh,
+    refreshFolders,
+    selectMeeting,
+    setNotice,
+    setView: (v) => setView(v as typeof view),
+    setSelectedFolderId,
+  });
+
   // Listen for tray and hotkey events from Rust backend
   useEffect(() => {
     const handleToggle = () => {
       if (statusRef.current === "idle") {
-        start();
+        start(recordingFolderIdRef.current);
       } else if (statusRef.current === "recording") {
         void stopWithPendingAttachments(templateRef.current, userNotesRef.current);
       }
@@ -470,6 +537,7 @@ function App() {
         setLiveLines((prev) => [...prev, event.payload]);
         lastActivityRef.current = Date.now();
         setMeetingOverPrompt(false);
+        setNotice((n) => (n === "No speech heard yet" ? null : n));
       }),
       // Streaming preview of the utterance in progress (replace semantics per
       // source; empty text clears). Counts as activity for the silence auto-stop.
@@ -480,6 +548,22 @@ function App() {
           lastActivityRef.current = Date.now();
           setMeetingOverPrompt(false);
         }
+      }),
+      listen<CopilotCard>("copilot-card", (event) => {
+        const card = event.payload;
+        // Session gating: drop if no active session or id mismatch; also ignore unless recording/stopping
+        const activeSession = currentCopilotSessionRef.current;
+        if (!activeSession || card.session_id !== activeSession) return;
+        if (statusRef.current !== "recording" && statusRef.current !== "stopping") return;
+        setCopilotCards((prev) => upsertCopilotCard(prev, card));
+        setNotice((n) => (n === "No speech heard yet" ? null : n));
+      }),
+      listen<CopilotAnswerEvent>("copilot-answer", (event) => {
+        const ev = event.payload;
+        const activeSession = currentCopilotSessionRef.current;
+        if (!activeSession || ev.session_id !== activeSession) return;
+        if (statusRef.current !== "recording" && statusRef.current !== "stopping") return;
+        setCopilotCards((prev) => applyCopilotAnswerEvent(prev, ev));
       }),
     ];
 
@@ -511,6 +595,9 @@ function App() {
   // pane then shows the meeting with a "back to live notes" strip.)
   useEffect(() => {
     if (status === "recording") {
+      const folderAtStart = selectedFolderIdRef.current ?? recordingFolderIdRef.current;
+      setRecordingFolderId(folderAtStart);
+      recordingFolderIdRef.current = folderAtStart;
       clearSelection();
       setSelectedFolderId(null);
       setView("meetings");
@@ -553,9 +640,40 @@ function App() {
     [openSettingsTab],
   );
 
+  const handleForceCard = useCallback((useMeFallback: boolean) => {
+    copilotAskLast(useMeFallback).catch((e: unknown) => {
+      const msg = String(e);
+      if (msg.includes("No speech heard yet")) {
+        setNotice("No speech heard yet");
+      } else {
+        setNotice(msg.slice(0, 200));
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (notice !== "No speech heard yet") return;
+    const id = window.setTimeout(() => {
+      setNotice((n) => (n === "No speech heard yet" ? null : n));
+    }, 8000);
+    return () => window.clearTimeout(id);
+  }, [notice]);
+
+  const handleCopilotCancel = useCallback((cardId: number) => {
+    copilotCancel(cardId).catch((e: unknown) => {
+      setNotice(String(e).slice(0, 200));
+    });
+  }, []);
+
+  const handleCopilotRetry = useCallback((cardId: number) => {
+    copilotRetry(cardId).catch((e: unknown) => {
+      setNotice(String(e).slice(0, 200));
+    });
+  }, []);
+
   const handleRecordDetected = () => {
     setDetectedApp(null);
-    start();
+    start(recordingFolderIdRef.current);
   };
 
   const handleStopRecording = () => {
@@ -806,7 +924,7 @@ function App() {
     <>
       <RecordingControls
         status={status}
-        onStart={start}
+        onStart={() => start(recordingFolderIdRef.current)}
         onStop={handleStopRecording}
       />
       <div className="action-box">
@@ -865,12 +983,17 @@ function App() {
                     setImportMenuOpen(false);
                     setImporting(true);
                     try {
-                      const meeting = await importMeetingBundle();
-                      if (meeting) {
-                        refresh();
-                        setSelectedFolderId(null);
-                        selectMeeting(meeting.id);
-                        setView("meetings");
+                      const report = await importAdversaria();
+                      if (report) {
+                        const toast = `Imported ${report.imported} meeting(s)${report.folders_created ? " into a new folder" : ""}${report.skipped_existing ? " · " + report.skipped_existing + " already here" : ""}`;
+                        setNotice(toast);
+                        await refresh();
+                        await refreshFolders();
+                        if (report.meeting_ids.length > 0) {
+                          setSelectedFolderId(null);
+                          selectMeeting(report.meeting_ids[0]);
+                          setView("meetings");
+                        }
                       }
                     } catch (e) {
                       setNotice(String(e).slice(0, 200));
@@ -880,7 +1003,7 @@ function App() {
                   }}
                 >
                   <FileJson size={15} aria-hidden="true" />
-                  Meeting bundle (.json)…
+                  Meeting (.adversaria, .json)…
                 </button>
               </div>
             </>
@@ -1384,6 +1507,16 @@ function App() {
                   recentMeetings={recentMeetings}
                   onStop={handleStopRecording}
                   onBrowse={() => setPeekBrowse(true)}
+                  folders={folders}
+                  recordingFolderId={recordingFolderId}
+                  onChangeRecordingFolder={setRecordingFolderId}
+                  copilotCards={copilotCards}
+                  onForceCard={handleForceCard}
+                  onCancel={handleCopilotCancel}
+                  onRetry={handleCopilotRetry}
+                  onNotice={setNotice}
+                  copilotSessionId={copilotSessionId}
+                  isRecordingActive={isRecordingActive}
                 />
               ) : (
                 <>

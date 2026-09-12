@@ -22,7 +22,7 @@ React UI ──invoke──▶ Tauri (Rust) ──HTTP :9876──▶ Python ML 
                        │                            ├─ faster-whisper / mlx-whisper (transcription, GPU)
                        │                            └─ Ollama           (summarization, local LLM)
                        ├─ dual capture: system ("Them") + mic ("Me") → WAV
-                       │    Windows: WASAPI loopback · macOS: ScreenCaptureKit + cpal
+                       │    Windows: WASAPI loopback · macOS: Core Audio process tap + cpal (SCK removed 2026-08-13)
                        └─ SQLite meeting history (per-OS app-data dir)
 ```
 

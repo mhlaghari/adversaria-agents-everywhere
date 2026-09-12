@@ -6,12 +6,485 @@ pause or finish work.
 
 ---
 
+**2026-09-06 18:20 GST — Realtime Copilot rev 5 answer feed, complete-turn context and manual DeepSeek retry correction implemented; rebuilt debug app open (uncommitted, `feat/live-copilot-c`).**
+
+- **Founder approval and artifact:** the founder reviewed `.recon/copilot-feed-concepts-20260906/index.html`, chose the flat transcript-style answer feed, and said it “looks very good.” The artifact remains the review reference.
+- **Conversation envelope:** the sidecar returns a `caption_boundaries` entry for every surviving caption. `forced` marks the live pipeline's latency cut and remains buffered; `silence` closes the speech turn. Rust detects a prompt only on the assembled complete Them turn and freezes that turn (≤2,000 characters), its `question_source`, and up to four immediately preceding chronological Me/Them turns (≤600 characters including label). Manual **Answer current question** uses the latest complete Them turn; solo testing uses the latest complete Me turn. Local, Claude and DeepSeek share the same semantic envelope and their consent copy now describes it.
+- **Feed UI:** `CopilotCards` is a flat `role=feed`. New/active answers use one blue left marker, answer text streams before low-weight metadata, **Context · N turns** exposes the exact frozen dialogue, and **Sources · N** keeps retrieved passages collapsed. The previous stacked meeting excerpts and nested answer cards are removed from the main scan path. Retry, Cancel, Pin, provider labels, privacy accounting and XSS-safe text rendering remain intact.
+- **18:11 native regression and fix:** the saved card row in SQLite was `provider_frozen=no_ai`; it had been captured before DeepSeek was selected. A subsequent manual Ask of the completed question hit the automatic last-three-answers dedup window and raised the false notice **Question is already in progress**. Manual Ask now checks only active/waiting work, allowing an intentional re-ask after completion or a provider switch while still rejecting a duplicate click during live work. Automatic caption detection retains active/waiting/recent-answer dedup. Every feed row now has a frozen-provider chip, and No AI completion copy says **Done · No AI · passages only**. The recording saved normally as **Air Gap Software Inquiry**.
+- **Verification:** frontend **41 files / 383 passed**; production TypeScript/Vite, bundle (**486.68 kB / 500 kB**) and security checks pass. Rust **420 passed / 1 ignored**, fmt/clippy pass. Python **652 passed / 1 skipped**, changed-file Ruff lint/format pass; focused boundary/request tests **147 passed**. `git diff --check` passes.
+- **Build/runtime:** the corrected debug bundle completed at `src-tauri/target/debug/bundle/macos/Adversaria.app` (18:18 GST). Tauri's wrapper exited 1 only after producing the app/updater archive because no updater private key is set for this disposable debug build. The current-tree Python service is PID **74571**, healthy on `127.0.0.1:9876`; the rebuilt app is PID **21253**, has one visible native window, and is open. The installed `/Applications/Adversaria.app` was not replaced. A macOS/TCC filesystem stall blocked `esbuild` when launched inside Documents after the final CSS edit, so the verified Vite assets were built from a same-volume `/private/tmp/mnt-build-20260906-fix` clone, synced to repo `dist`, and packaged with a full temporary Tauri config changing only `beforeBuildCommand` to empty. The first inline partial override dropped `frontendDist` and produced a no-window bundle; that bundle was discarded and replaced by the full-config build. Temporary build files were removed after final verification.
+- **Remaining evidence:** run one short recording with **AI · DeepSeek** selected before speaking. Ask one long, context-dependent question that crosses caption lines, pause, click **Answer current question** once, and verify a fresh DeepSeek-labelled answer plus the exact expanded Context envelope. Credentialed success is recorded only when the response carries DeepSeek provenance.
+
+**2026-09-06 13:31 GST — DeepSeek added to Realtime Copilot v2; current debug app running (uncommitted, `feat/live-copilot-c`).**
+
+- **Behavior:** `deepseek` is a first-class Copilot mode from folder defaults through the active recording override, queue, stream events, provenance, retry, pinning, persistence and receipts. It is fixed to `https://api.deepseek.com` + `deepseek-v4-pro`, with web search and thinking disabled. It sends only the question, at most two preceding Them lines, at most three passages and the folder instructions; the full transcript is never sent.
+- **Credential and boundary:** the key uses its own OS-keychain account (`deepseek-api-key`) and separate Tauri commands/UI from Anthropic. Debug fallback is `dev-copilot-deepseek-key` with mode 0600. The provider configuration freezes per card. Rust and Python both reject an absent key, alternate model/host, HTTP, userinfo, explicit port, query/fragment, and paths beyond root or `/v1` before a provider socket opens. Logged/receipt egress bytes remove both `api_key` and `llm_api_key` fields.
+- **Streaming:** the Python sidecar reuses the strict OpenAI-compatible SSE reader with `stream_options.include_usage`; success requires `finish_reason: stop`, upstream `[DONE]`, a usage frame and nonblank answer text. It reports stable DeepSeek auth, rate-limit, timeout, early-EOF and provider errors. No web citations/search accounting are possible for this mode.
+- **UI:** Settings › Live Copilot has a separate DeepSeek key form. Consent bars offer AI · DeepSeek only when its key exists and disclose the bounded payload. Cards, compact strip, pin labels and meeting receipts say DeepSeek explicitly.
+- **Verification:** frontend 41 files / **381 passed**, `tsc` and production build/bundle/security green (485.00 kB / 500 kB); Rust **417 passed / 1 ignored**, fmt/clippy green; Python **651 passed / 1 skipped**, changed-file Ruff lint/format green. No real provider request has run because the founder has not entered the key.
+- **Runtime:** the healthy Python dev service remains on `127.0.0.1:9876`. Current debug bundle: `src-tauri/target/debug/bundle/macos/Adversaria.app`; it was launched without replacing `/Applications/Adversaria.app`. The app bundle itself completed; the wrapper returned nonzero after bundling because disposable debug builds do not have the updater private signing key. macOS is showing its idle/lock wallpaper, so the running window becomes available after wake/unlock.
+- **Next:** save the key locally in Settings › Live Copilot, make a short recording, choose AI · DeepSeek, ask a question, and record the first real response/latency. Never place the key in handoff text, logs, fixtures or chat.
+- **13:35 GST first attempt and fix:** the founder saved the key and asked “What does air gap mean?”. Local retrieval succeeded, then `/copilot_answer_stream` returned HTTP 400 before provider egress. Root cause was process age: the manual Uvicorn service had started at 12:28, before the DeepSeek source edits, and was still serving the old request contract. It was shut down cleanly and restarted from the current source as PID 72615. Health now reports transcriber/embedder/live captions ready, and an in-process validation probe accepts provider `deepseek`, model `deepseek-v4-pro`, fixed base URL, web false. Repeat the recording; the existing failed cards do not prove a DeepSeek credential/model failure.
+
+**2026-09-05 23:21 GST — Realtime Copilot v2 implemented and final audits resolved (uncommitted, `feat/live-copilot-c`).**
+Implemented core v2 contracts (`docs/superpowers/specs/2026-09-05-realtime-copilot-v2.md`): durable session UUIDs (`copilot_session.rs`, `copilot_sessions` table), latest-intent 1-active/1-waiting queue, two-level cancellation tokens, registered loopback endpoints, authoritative stream termination (`[DONE]`), five-token provenance, and companion slide-over sheet/strip UX. Expressive bubble headline (`copilot-headline`) is deferred; companion answer strip and slide-over sheet are implemented. Provider, mode, question/context/persona/web are frozen at capture; retry requires current provider and web consent to match, reuses completed retrieval, and retrieves again after a retrieval-time cancellation. Fable's final consent/disclosure findings and the independent harness findings are fixed; no open P0/P1 remains. Terminal persistence is guarded, persisted before emit, and retried three times, with no recovery after all three SQLite attempts fail.
+- **Verification Gates Passed:**
+  - Frontend: 41 files / **377 tests** passed (vitest), `tsc --noEmit` clean, production bundle/security green (483.65 kB / 500 kB).
+  - Rust: **414 passed / 1 ignored** (cargo test), `cargo fmt` clean, `cargo clippy` clean.
+  - Python: **645 passed / 1 skipped** (pytest), ruff lint/format clean. Focused replay tests are **25/25** after proxy/redirect blocking, evidence-redaction, readiness-state, worker-lifecycle, answer-shape, feed-failure and request-cadence fixes.
+  - Automated cross-layer contract suites pass across all layers.
+- **Fixtures & E1a Service Replay Harness:** 14 invented scenarios in `python-service/tests/fixtures/copilot/manifest.json`. CLI harness in `scripts/copilot-e2e/replay.py` has strict loopback validation, proxy/redirect blocking, explicit live model identity, full-stream readiness and answer validation, request-start pacing including VAD flush, feed-failure accounting, TTFT sample counts, temporal continuity measurement, and atomic running/interrupted state. Regenerated dry-run simulation (`.recon/realtime-copilot-20260905/e1a-dry-run-host-final.json`, 0 executed/passed) and honest structured skip (`e1a-results-host-final.json`) confirm the local service is offline without downloading models.
+- **Native Operator Runbook:** `.recon/realtime-copilot-20260905/native-runbook.md` covers E1b, E3, and E4 with disposable data, synthetic fixtures, encrypted spool checks and frame-derived measurements. Native queue stress is explicitly pending a delayed instrumented engine; actual live SDK/socket teardown remains unmeasured.
+- **Installed App Notice:** Installed notarized app at `/Applications/Adversaria.app` is version **0.3.83** from the 18:35 GST local build; it does not contain these uncommitted v2 changes.
+- **Prerequisites Pending:** Automated contract suites pass; native and model cells remain pending: E1b/E3/E4 native capture remains `pending native capture` (needs CoreAudio virtual loopback or acoustic speaker/mic); E2 Claude remains `pending credential` (Anthropic API key).
+- **Delegation Record:**
+  - Fable coauthor: `8a3ac041-3eea-41e0-8f05-3739320fbf5e`
+  - Opus attempt: `4cfb3791-b01f-480d-95fb-ed5f4f05659d` (failed/incomplete; subsequent quota attempts failed)
+  - Sol core recovery: `01a07268-6162-7203-a6d9-7648d8825d4b`
+  - Sol transport: `01a0728c-a828-7121-ad75-4601f90fdcf6`
+  - Muse frontend: `01a0728c-a84f-7e70-87d5-775261671676`
+  - Gemini harness/docs: `fdb74b0b-86b7-4386-9020-32c528b3790f`
+  - Fable known spend across initial, review, and final runs: **$20.97394675**
+  *(Note: Dollar usage is unreported for Codex/Muse/Antigravity; wrapper `$0` values do not mean execution was free.)*
+
+**2026-09-05 18:35 GST — Current local build installed and verified (supersedes the pending-rebuild notes below).** Founder: “install the build”. Built the uncommitted `feat/live-copilot-c` tree (no source changes during this task) with `scripts/build-dmg.sh`, the existing Developer ID identity, beta config, production registration endpoint, notarization enabled, and automatic install disabled; then staged, verified, replaced, and launched `/Applications/Adversaria.app`. Version remains **0.3.83** because this was a local installation, not a new public release. It contains the To-dos repair and current Copilot/export work. The founder subsequently said “ok great”, acknowledging the installation; this was not live-recording Copilot acceptance.
+
+- **Checks:** frontend 328 passed; Rust 382 passed / 1 ignored; Python 586 passed / 1 skipped. Production TypeScript/Vite, bundle and security checks passed. Frozen sidecar `/health` and fixture transcription passed; Rapid-MLX 0.10.9 launch check passed. Final app deep/strict signature, every nested signing identity, updater archive equality, DMG stapling, and Gatekeeper passed. Native app opened and the To-dos screen showed responsive stacked cards with readable single-line date badges at the existing 1024×720 Laghari-theme window; no real tasks were edited. This was one native viewport/theme check, not a repeat of the 50-scenario browser matrix. Installed process path verified; installed service reported `status=ok`, transcriber/embeddings/live captions `ready`. Port 63104 was an observation of a dynamic port, not a stable port instruction.
+- **Data:** before/after 241 meetings / max id 298, SQLite `quick_check=ok`. Consistent pre-install backup: `~/Library/Application Support/meeting-note-taker/meetings.db.bak-pre-install-20260905`. No fixture deletion or recording. Copilot local/Claude real-recording smoke is still pending; Claude still needs a configured API key.
+- **Artifact:** `src-tauri/target/release/bundle/dmg/Adversaria-0.3.83-local-20260905-macos-arm64.dmg`; SHA-256 `af9f2af7ceecfa7c2c3386bcd1f1dc1dd1a33510a3eddca32e608f0017265c54`. Apple accepted job `72f5564a-c9de-4892-9a63-ff56be84109c`; DMG and installed app assessed `accepted`, `Notarized Developer ID`. Installed main executable SHA-256 `545941338f8726d3edaba753438415aa44f701be66727274196145aa7c259e9e`, equal to the new built executable. Logs, source hashes, and backups: `.recon/install-20260905/` (gitignored).
+- **Build environment repaired:** initial freezes failed on missing `mlx/lib/mlx.metallib`, then absent distribution metadata (`charset_normalizer` version None; 15 broken distributions). Preserved the old service `.venv`, then recreated it from the existing lockfile using `uv sync --project python-service --frozen --extra mlx --python /Users/mhlaghari/miniconda3/bin/python3.11`. Package metadata and MLX Metal execution recovered; source/lock hashes unchanged. Rapid runtime environment already passed metadata/file checks. Duplicate old `dist/* 2` folders were moved aside before freezing, avoiding the documented slow-delete trap.
+- **Release provenance warning:** the build script regenerated the current stable-named DMG, updater archive, and `provenance-beta.json` from this uncommitted local tree. **Do not use those to publish the original 0.3.83 release.** The prior release bundle is preserved at `.recon/install-20260905/previous-release-bundle/`; original installed app at `.recon/install-20260905/previous-installed/Adversaria.app` (also `replaced-installed/Adversaria.app`). Public publishing from the earlier handoff remains a separate task. No commit, push, public publication, version bump, or Windows build occurred. Remote release/Windows current state was not checked in this installation session.
+
+## Next steps
+
+1. Daily-drive the installed To-dos repair.
+2. Founder option: run native operator runbook (`.recon/realtime-copilot-20260905/native-runbook.md`) for **E1b** (AI Local) and **E3** (Under load) using a disposable `ADVERSARIA_DATA_DIR`.
+3. Configure Anthropic API key in Settings › Notes › Live Copilot for **E2** Claude verification.
+4. Founder decides whether to commit and schedule a release build incorporating Realtime Copilot v2.
+
+Current stable-named DMG/updater/provenance outputs contain the uncommitted local tree; do not publish them as the original public 0.3.83 release. Use the preserved original-release boundary above; the prior bundle is at `.recon/install-20260905/previous-release-bundle/`.
+
+**Historical — 2026-09-05 To-dos formatting preview (superseded by the 18:35 GST installation; still uncommitted on `feat/live-copilot-c`).** The screenshot’s unequal, overflowing lanes and wrapped, faint dates are repaired in `src/prototype.css` only: equal `minmax(0, 1fr)` tracks, container-width adaptation including AI, long-text wrapping, wrapping metadata/header, and nonshrinking single-line date badges using theme tokens. Delegated through the Stuntman marketplace wrapper to Muse Spark; two feedback rounds (date contrast and the temporary checker); the orchestrator made the final one-line green date contrast adjustment. The orchestrator independently passed `tsc --noEmit`, all 6 TodosView workspace tests, layout detector (`[]`), and `npm run build` including bundle/security checks. The real-component Chrome preview passed 50/50 synthetic scenarios (five frame widths 360–1280px, five themes, AI on/off): no horizontal overflow, correct tracks, single-line dates, minimum badge contrast 5.06:1. The saved original CSS reproduced overflow, wrapping dates and 1.04:1 contrast. Wide/narrow screenshots and synthetic task completion passed. No native WebKit check was performed during that preview session. Vite-only preview: `http://localhost:1420/.recon/todos-layout-20260905/index.html`; artifacts are git-ignored under `.recon/todos-layout-20260905/`. No backend or real DB access; existing Slice C edits were preserved by file-hash comparison. No release actions. At that stage, the installed app had not been rebuilt/replaced and needed a new build for this CSS; the 18:35 installation applied it.
+
+**Historical — 2026-09-05 To-dos preview accepted ("looks good"); Codex preferences installed (parent).** The user accepted the preview; its pending-build status was superseded by the 18:35 GST installation. CSS remains uncommitted on `feat/live-copilot-c` and is now installed. History: triage grid/metadata `60eaf61` Jul 18 and date pastels `6512724` Jun 22 predated Laghari theme `de89f8f` Aug 13 without converting badges — latent sizing bug + light-theme miss; triggering task/release unproven. Behavioral tests existed; fixture visual run now 50 combos covers width/theme/AI. Codex install: `~/.codex/config.toml` `approval_policy never`, `sandbox_mode danger-full-access`, `notify` wrapper `["/usr/bin/python3","~/.codex/hooks/task_complete_notify.py"]` preserving SkyComputerUseClient `turn-ended`, WAV `~/.codex/sounds/task-complete.wav` (YouTube `HCn94mNuICk` 7.11–7.84→0.73s 48kHz PCM16, byte-equal to scratch); parent verified 8 notification tests PASS, TOML 3-key change preserved, CLI loads exit 0, wrapper dry-run forward/play true; playback not claimed heard (parent-owned); backup `~/.codex/config.toml.backup-20260905T115736`; new sessions/restart required (current thread not retroactive, OS/browser confirmations remain); scope Codex only; one installer review round; no release/rebuild/commit/DB during that earlier session.
+
 > ⚠️ **HANDOFF top was stale (jumped 07-09 → 07-24).** The whole notch-pill arc
 > (0.3.51→0.3.57, SHIPPED) and the 8 GB / model-tier research are recorded in
 > **STATUS.md** (the current board), not here. Trust STATUS.md for current
 > state; the dated sections below are historical detail.
 
-## ⏭ NEXT SESSION STARTS HERE (2026-09-01, night) — LIVE CAPTIONS BUILT, VERIFIED, FOUNDER-SEEN; commit/merge is the next call
+## Historical handoff — 2026-09-03 (~09:40), with Sep 4 updates (superseded by current state and Next steps above)
+
+**Update 2026-09-03 (evening session):** no code changed. A competitor
+assessment of DoodleNote (doodlenote.ai) was completed by three delegated
+agents and recorded in `docs/DOODLENOTE_COMPARISON.md` (first pass wrongly
+listed our MCP server as missing; corrected the same evening, `adversaria-mcp`
+0.2.0 is live on PyPI); a DoodleNote column
+and bullet were added to `docs/marketing_strategy.md`; six competitive-gap
+backlog items were added to `docs/TODO.md`; `README.md` and `SPEC.md` no
+longer describe Live Copilot as unmerged (it merged in `b6222c2`).
+Housekeeping found by the read-back, not yet fixed: duplicate " 2.md" /
+" 2.tsx" files and three broken " 2" refs exist in the tree; the vault note
+body still says v0.3.11; dev processes were still listening on :9876 (pid
+94390) and :1420 (pid 97537). The ordered next-step list below is unchanged.
+
+**Update 2026-09-04 08:04 (overnight session, continued):** the founder chose "publish 0.3.83 and build the AI part (slice C)"; the rich-editor slice was declined.
+- **Release 0.3.83:** the first public sync (PR #30) failed Windows CI on one Rust test (`workspace_runs::tests::folder_excerpt_prioritizes_root_readme`, `docs\guide.md` vs `docs/guide.md`). Fix `b86e912` on master (join path components with '/'), cherry-picked as `76fac1f` onto a `release/0.3.83` branch in the worktree `/private/tmp/claude-501/-Users-mhlaghari-Documents-Documents-MyProjects-meeting-note-taker/dbed897f-89d4-48ca-8b11-dae5682a3570/scratchpad/wt-0383` (base `21ca7aa`, so the release excludes the copilot/export work). PR #31 green on all 3 checks, merged (public `main` = `b612d03`, package.json 0.3.83). Windows release candidate run `33834551934` dispatched (`channel=beta`, `bundle_cuda=false`). macOS artifacts from 2026-09-02 verified: `Adversaria.app.tar.gz` 0.3.83, `.sig` key id `e1b42bed5b7d787f` == pinned pubkey, stable DMG stapled. **Remaining:** download the Windows artifact (`gh run download`, retry), then `ADVERSARIA_RELEASE_CHANNEL=beta ADVERSARIA_WINDOWS_DIR=<dir> ./scripts/publish-release.sh "$(cat /private/tmp/claude-501/-Users-mhlaghari-Documents-Documents-MyProjects-meeting-note-taker/dbed897f-89d4-48ca-8b11-dae5682a3570/scratchpad/release-notes-0.3.83.txt)"` from a tree whose tauri.conf.json says 0.3.83 (master and `feat/live-copilot-c` both do), verify `latest-beta.json` 0.3.82→0.3.83 with both platforms and both key ids, and check the site's download link resolves to the new DMG (the site links `releases/latest/download/Adversaria-macos-arm64.dmg`, no version text to edit).
+- **Slice C BUILT, UNCOMMITTED, on branch `feat/live-copilot-c`** (working tree; master = `b86e912`). Three workers by layer from one pinned contract (`.recon/spec-copilot-C-contract.md`, specs `spec-copilot-C-{python,rust,frontend}.md`; Python = Codex, Rust = Antigravity, frontend = Muse; one review round each). Verified by Claude on the merged tree: tsc clean · vitest 328/328 (+22) · cargo test 382 + 1 ignored (+10) · pytest 586 + 1 skipped (+7) · fmt/clippy/ruff clean · real DB still 240 meetings / max id 297. What it does: ARCHITECTURE → Live Copilot → "Answer cards + consent". **Not yet exercised live:** neither path has run end-to-end in the app (the dev stack was down); the Claude path also needs an Anthropic API key (none on this Mac; Settings › Notes › Live Copilot stores it in the keychain). The §6b under-load probe PASSED (`.recon/copilot-probe/stage_e_underload_results.json`: local cards 4B 494 ms / 35B 897 ms under a live feed, ≤1.16× TTFT slowdown; live_feed p95 91 ms), so AI · Local is safe as a default; headless `claude -p` measured 3.5–3.9 s TTFT (too slow for cards, confirming ADR-020 alt (b)).
+- **Also this session:** DoodleNote competitor assessment (`docs/DOODLENOTE_COMPARISON.md`, MCP correction included); dev stack killed and stale `.recon/dev/*.pid` removed; the DoodleNote doc edits and slice C are BOTH uncommitted on `feat/live-copilot-c` (docs backup in `/private/tmp/claude-501/-Users-mhlaghari-Documents-Documents-MyProjects-meeting-note-taker/dbed897f-89d4-48ca-8b11-dae5682a3570/scratchpad/docs-backup/`).
+- **Next steps, in order:** (1) finish the 0.3.83 publish above; (2) founder decides whether to commit slice C (`git add -A && git commit` on `feat/live-copilot-c`, docs first) — nothing is committed yet by design; (3) start the dev stack (`npm run tauri dev` + the service), pick AI · Local on a folder, record a 2-minute rehearsal and read the card; (4) add an Anthropic API key in Settings › Notes › Live Copilot and repeat with AI · Claude; (5) junk rows 260–292; (6) 0.3.84 cut with everything.
+
+**State for a cold start (founder is starting a fresh session/agent):**
+master = `b6222c2` = merge of `feat/live-copilot` (which contains
+`feat/meeting-context-followup`). Verified on master after the merge:
+tsc clean · vitest 306/306 · cargo test 372 + 1 ignored · pytest 579 + 1
+skipped. NOT pushed to origin; NOT on the public mirror; no version bump yet
+(manifests still say 0.3.83). Both feature branches can be deleted.
+
+**What master now has beyond the shipped 0.3.83:** attached-meeting
+follow-up check + "Context used" strip; Live Copilot slices A+B (folder
+`copilot_mode`, Last time tab, Copilot tab with local passages — NO model);
+theme-matched slide deck + "Export as PDF (opens print)…"; `.adversaria`
+document (uids, folders, action-item state, re-import de-dup, file
+association, open-with); the founder's review fixes. Detail: ARCHITECTURE
+(Live Copilot + Export formats sections), spec
+`docs/superpowers/specs/2026-09-02-live-copilot-design.md`, ADR-020.
+
+**Founder's pending items, in order:**
+1. **Publish 0.3.83** (the live English captions release; public is still
+   0.3.82): `! ./scripts/sync-public.sh --pr` → 3 CI checks → merge public
+   `main` → `gh workflow run "Windows release candidate" --repo
+   LaghariLabs/adversaria --ref main -f channel=beta -f bundle_cuda=false` →
+   `ADVERSARIA_RELEASE_CHANNEL=beta ADVERSARIA_WINDOWS_DIR=<dir>
+   ./scripts/publish-release.sh "<notes>"` → verify manifest 0.3.83 + both
+   sig key ids `e1b42bed5b7d787f`. Note master now also carries the unreleased
+   copilot/export work — sync pushes ALL of master; either publish 0.3.83 from
+   the `95eebd1`/`21ca7aa` state (branch it) or cut 0.3.84 with everything.
+2. **Junk DB rows 260–292** (worker test fixtures): backup exists
+   (`meetings.db.bak-pre-testrow-cleanup-*`); rows 293–296 are REAL (his
+   morning recordings) — the command below deletes `id>259` so RUN IT ONLY
+   AFTER changing every `>259` to `>259 AND <293` / `id BETWEEN 260 AND 292`.
+3. **Try Import** of `~/Downloads/…Dubai.adversaria` (expect "0 imported · 1
+   already here"); double-click association only works in a built app.
+4. **0.3.84 cut** via the ship ritual once he is happy (bump 3 manifests +
+   Cargo.lock, CHANGELOG, `build-dmg.sh` NOTARIZATION §4 command, Mac unlocked).
+5. **Slice C** (answer cards + consent switch) needs Anthropic credentials
+   (`ant auth login` or API key) and the local-under-load probe (spec §6b).
+6. Kill `caffeinate` (`.recon/dev/caffeinate.pid`); the dev stack pids are in
+   `.recon/dev/` (`service.pid` :9876, `tauri-dev.pid`) — the checkout is now
+   master with identical content, so the running dev app is current.
+
+**Working rules that saved us this session (LESSONS 2026-09-02/03):** never
+two workers on one file (parallelise by layer, pin the IPC contract in both
+specs); Rust tests on `in_memory_db()` only + `ADVERSARIA_DATA_DIR=$(mktemp
+-d)` for every cargo run + check the real DB counts after any worker;
+commit docs BEFORE launching workers (a worker reverted uncommitted docs);
+verify worker claims (one claimed tests it never wrote; one rendered raw
+HTML from transcripts — caught in review).
+
+**What the copilot IS today (founder asked 09:20):** slices A+B use NO
+language model. A regex detects the question; retrieval (bge-m3 embeddings
+via Ollama + SQLite FTS) returns the founder's own passages verbatim.
+Neither Claude nor the local notes model generates anything; the No AI /
+AI Claude / AI Local switch is slice C, unbuilt (Claude unmeasured: no
+credentials on this Mac; local model needs the under-load probe first).
+
+**Second founder review (07:28 screenshot):** layout fixed ("much better"),
+Copilot card works end-to-end (manual card on "What is an air-gapped
+system?" returned 3 passages). Still off: tabs stretched to thirds of the
+column; passages repeat the title line, show raw `**markdown**`, dump whole
+transcripts with an inner scrollbar; retrieval matched on the word "system"
+alone. **In flight:** `.recon/spec-fix-F3-frontend.md` (Muse: compact
+left-aligned tabs, `cleanPassageText`, 6-line clamp + Show more, no inner
+scroll, compact force button, 900 px copilot panel) — first pass rendered passages via `dangerouslySetInnerHTML` WITHOUT
+escaping (XSS from transcript/vault text) → resume round fixed it with
+plain React nodes (`renderPassage`); the worker CLAIMED tests it never
+wrote (count stayed 300) → Claude wrote `CopilotCards.passages.test.tsx`
+(6 tests) → committed `f714325`, vitest 306/306; `.recon/spec-fix-F4-rust.md`
+(Antigravity: FTS only with ≥2 specific keywords or one rare ≥7-char one,
+coverage-based FTS score, strip the title line from passage text at the
+source). Results `.recon/result-F3-front2.json` / `result-F4-rust.json`.
+**Next:** founder re-checks (the Rust change rebuilt the dev app once;
+ask a specific question — generic words alone no longer search); his real
+recordings this morning are rows 293–296 (keep); junk rows remain 260–292; then merge /
+0.3.84 / junk rows 260–292 / Claude creds decisions.
+
+**Founder review (07:11, screenshots):** (1) "theme didn't work" — it DID: his
+07:13 export (`~/Documents/Documents/MyProjects/…-print.html`) has
+`adversaria-theme=laghari`, cream `#f2ebda`, footer "Laghari Labs theme"; he
+had opened the Aug-27 files in Downloads. Real flaw: *Export as PDF…* saved
+an .html and did not open it → fixed: *Export as PDF (opens print)…* saves
+the themed deck and opens it via `@tauri-apps/plugin-shell` with `#print`
+so the browser's print dialog appears. (2) Companion right column was broken
+(tabs inside the 280 px aside, notes pane removed on other tabs) → fixed:
+`.companion-right` with the `Notes · Last time · Copilot` strip on top,
+Notes = textarea + aside row as before, other tabs = `.companion-panel`
+filling the right area. (3) No copilot card when testing alone → fixed:
+`last_any` fallback + empty-state hint. (4) `.adversaria` export verified
+(`~/Downloads/…Dubai.adversaria`, envelope OK); import not yet tried by him.
+(5) PPT export: "not a priority" → TODO 🟡. His two morning recordings are DB
+rows 293–294 (real, keep); the junk rows are still 260–292.
+
+**⚠ Gotcha (2026-09-03):** uncommitted doc edits made while workers ran
+(07:20–07:30 HANDOFF/STATUS/TODO) were found reverted to HEAD afterwards —
+no stash, no reflog entry; a worker most likely ran `git checkout`/`restore`
+despite the "no git writes" rule. Commit docs BEFORE launching workers, or
+write them after the workers finish.
+
+**Next:** founder re-checks the layout (Vite hot-reloaded it; the Rust fix
+made `tauri dev` rebuild once), tries Import of his `.adversaria` file
+(expect "0 imported · 1 already here"), then decides: merge
+`feat/meeting-context-followup` + `feat/live-copilot` → master? cut 0.3.84?
+Cleanup of junk rows 260–292 (command below, adjust nothing — rows 293–294
+are his). Claude credentials for slice C. Kill `caffeinate`
+(`.recon/dev/caffeinate.pid`) when done reviewing.
+
+## Session (2026-09-03, ~00:20) — OVERNIGHT DONE: copilot A+B + exports on `feat/live-copilot` (4 commits), dev stack running for the founder's review
+
+**Commits on `feat/live-copilot` (branched from `feat/meeting-context-followup` = `2818ee7`):** `34d04a2` slice A · `23ab875` slice B · `39b6782` exports (themed deck/PDF + `.adversaria`). Docs on the branch are uncommitted at the time of writing (this file, STATUS, TODO, ARCHITECTURE, README, SPEC) — commit them as `docs:` when the founder has reviewed. Gates re-run by Claude after every worker: cargo test 367 + 1 ignored, clippy/fmt clean, tsc clean, vitest 300/300, real DB `292|236` throughout.
+
+**Founder review checklist — exports (in addition to the copilot checklist below):** 6. Settings → General → theme Laghari Labs; open any meeting → Export → *Export as Slide…* → the saved HTML is cream/Laghari (footer says "Laghari Labs theme"), its *Print / Save as PDF* button prints in the theme; *Export as PDF…* saves the `-print` variant. 7. *Export as .adversaria…* → a `.adversaria` file; in a folder view *Export folder as .adversaria…*. 8. Import: Import menu → pick that file → toast "Imported 0 meeting(s) · N already here" (de-dup by uid); pick an old `.adversaria.json` → imports once. 9. Double-click a `.adversaria` file in Finder: the DEV binary has no bundle so the association only works in a built app (`npm run tauri build`) — expect it to work in the next DMG, not in dev. 10. Decisions after review: merge `feat/meeting-context-followup` + `feat/live-copilot` to master? cut 0.3.84? The 33 junk DB rows (260–292) still need the cleanup command (below), and Claude credentials are still absent (slice C).
+
+
+
+**Overnight goal (founder, asleep):** finish A+B via workers, prepare the
+dev app for his review, then two new asks: (1) theme-matched slide + PDF
+exports (Laghari Labs theme → Laghari Labs deck/PDF), (2) a first-class
+`.adversaria` bundle format teams can exchange and import (draw.io-style),
+replacing the `.json` bundle. Codex export code map in flight
+(`.recon/brief-codex-export-map.md` → `recon-codex-export-map.md`).
+
+**Done tonight:** slice A (`34d04a2`: folder `copilot_mode`,
+`FolderCopilotBrief`, Notes · Last time tabs, folder captured at record start
+and filed on stop, tick-to-done) and slice B (`23ab875`: `copilot.rs`
+detector + bounded worker + tiered local retrieval + `copilot-card` event,
+Copilot tab with cards/badge/pin/force). All gates re-run by Claude: cargo
+test 362 + 1 ignored, clippy/fmt clean, tsc clean, vitest 283/283; real DB
+still `292|236`. Mock of the Last time tab:
+https://claude.ai/code/artifact/aafe40a7-7de2-4b3d-854e-de8eaca29196
+
+**Dev stack RUNNING (leave it for the founder):** installed Adversaria was
+quit; Python service pid in `.recon/dev/service.pid` (:9876, log
+`.recon/dev/service.log`), `npm run tauri dev` pid `.recon/dev/tauri-dev.pid`
+(log `.recon/dev/tauri-dev.log`), `caffeinate -i` pid
+`.recon/dev/caffeinate.pid` (kill it when done). The Mac was at the LOCK
+SCREEN, so Claude could not drive the UI (keystrokes/screenshots blocked);
+the full-stack check is the founder's. Synthesized question clips for a
+system-audio test: `.recon/dev/audio/q1.aiff`, `q2.aiff` (`afplay` them
+while recording → they arrive as "Them").
+
+**Founder review checklist (dev app):** 1. Open the Interviews folder, hit
+record (⌘⇧M or the button) → right column shows `Notes · Last time ·
+Copilot`; Notes shows "Filing into: Interviews". 2. Last time tab: last
+meeting (24 Aug Fractional call), attendees, decisions; open items appear
+only if any are open (all 4 are ticked in the DB — untick one in the To-dos
+view first to see the checkbox flow). 3. Copilot tab: play
+`.recon/dev/audio/q1.aiff` with `afplay` (or ask a question from another
+device) → within ~2 s a card with the question and up to 3 passages
+(vault/project/meeting/notes chips); "Card for the last thing they said"
+forces one; Pin to notes appends to YOUR NOTES; the badge counts unread cards
+while on another tab. 4. Stop → the meeting is filed into Interviews (check
+the folder) and the notes still carry the follow-up section from the
+attached-meeting feature. 5. Nothing should have touched the network
+(Copilot is local-only in A+B).
+
+
+
+**Founder decisions (2026-09-02/03 night):** build slices A (No AI "Last
+time" folder brief) and B (Them-question detector + local passages) INSIDE
+Adversaria; Interview Assist later as a second thin shell (no OSS fork —
+GPL). Commit the follow-up work first, branch the copilot from it
+(`feat/live-copilot` = `2818ee7` + copilot commits). Still NOT merged to
+master, NOT pushed. The 33 junk DB rows (260–292) still await the founder's
+cleanup command (block below); Claude credentials still absent on this Mac.
+
+**Build plan (parallel BY LAYER, never two workers on one file):**
+phase 1 = slice A Rust (Codex, `.recon/spec-copilot-A-rust.md`) ∥ slice A
+frontend (Muse, `.recon/spec-copilot-A-frontend.md`) against the pinned
+contract (`Folder.copilot_mode`, `get_folder_copilot_brief`,
+`set_folder_copilot_mode`, `FolderCopilotBrief{last_meeting, open_items[
+meetings_ago], decisions, follow_ups}`); phase 2 = slice B Rust
+(Antigravity gemini-3.8-flash-high, `.recon/spec-copilot-B-rust.md`, already
+written: `copilot.rs`, `is_prompt`, bounded try_send worker off the live
+loop, tiered retrieval live inputs → folder FTS → context FTS → semantic
+≤2.5 s, `copilot-card` event, `copilot_set_live_context`,
+`copilot_force_card`) ∥ slice B frontend (spec to write once A's tabs exist).
+Results `.recon/result-A-rust.json` / `result-A-front.json`; pids beside.
+
+**When a worker lands:** review the diff against its spec, then run the
+gates YOURSELF (Rust: `cd src-tauri && export ADVERSARIA_DATA_DIR=$(mktemp -d)
+&& cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings &&
+cargo test`; frontend: `npx tsc --noEmit && npx vitest run
+--no-file-parallelism`), check the real DB counts stayed `292|236`, commit
+each slice on `feat/live-copilot` (founder authorised the branch work),
+then launch phase 2. After B: boot the service + `npm run tauri dev`, record
+in a folder with open to-dos, ask a question from the "Them" side (play a
+`say` WAV into the system audio, or the founder speaks), confirm the Last
+time tab and a copilot card with passages; no egress anywhere.
+
+
+
+**Earlier tonight — founder direction (evening):** a live copilot rail for three cases (recurring
+meetings · interviews as candidate · expert calls). Knowledge cascade: his own
+material first (deterministic, always), then Claude's knowledge, then the web,
+every bullet labeled; "Not in your notes" instead of invented experience. No
+mode switch; ONE consent switch: **No AI** (previous-meeting facts only) ·
+**AI · Claude** (question + passages leave, never the transcript) · **AI ·
+Local model** (allowed, labeled slow/lower quality). "Local-first" stays true
+but stops being the headline. He asked for the spec, a visual, and the probe,
+delegated to Gemini 3.8 Flash (via Antigravity), Muse, and Codex.
+
+**Done:** spec v1 `docs/superpowers/specs/2026-09-02-live-copilot-design.md`
+(loop, modes, rail, latency budget with ⏱ cells awaiting the probe, data,
+slices 0–5, open questions); **ADR-020** in DECISIONS.md; visual
+https://claude.ai/code/artifact/e9c09038-00f4-40b7-b716-d5d651925fc2
+(loop + interview rail + switch + stand-up brief; cards illustrative);
+Muse memo `.recon/recon-muse-copilot-landscape.md` folded in (manual hotkey
+fallback, 8 s debounce, glance layer + collapsed script, Claude citations as
+the "your notes" verifier, positioning headline).
+
+**PROBE RESULT (Antigravity/Gemini 3.8 Flash, `.recon/recon-agy-copilot-latency.md`, verified by Claude):** question end → confirmed caption 1.68 s; Moonshine partial has the question's key words 0.5–2 s BEFORE the speaker finishes; embed+search 32 ms; local 4B card 28 ms TTFT / 0.5 s full, local 35B 83 ms / 0.8 s; regex detector recall 1.0 / precision 0.875 vs 4B classifier recall 0.19. **Claude NOT measured: no Anthropic credentials on this Mac** (`ant` not installed, no `ANTHROPIC_API_KEY`) — founder must `ant auth login` or set a key before slice 3 can be measured. Consequences written into the spec (v1.1 §5): local tier is fast not slow, speculative retrieval on the partial, labels assigned in code, regex trigger.
+
+**All scouts DONE (results `.recon/result-cp-*.json`):** probe (above), Muse landscape, Muse OSS, Codex code map (`recon-codex-copilot-map.md`, 46 KB, file:line for every hook; folded into spec §6b + slices A–E). Nothing is being built; the founder said "wait for the probe, then decide".
+
+**Formerly in flight:**
+Codex on the code
+map (`brief-codex-copilot-map.md` → `recon-codex-copilot-map.md`); Muse OSS recon DONE
+(`recon-muse-oss-copilots.md`): fork none (top clones are GPL-3.0 Electron;
+Pluely closed; Natively source-available); borrow 3 Tauri window flags
+(`alwaysOnTop`, `contentProtected`, `setIgnoreCursorEvents`) + the prompt
+SHAPE (not text: GPL); "couldn't get it to work" = macOS TCC + retired
+Gemini IDs. Spec §7c: Interview Assist = second thin shell on our engine.
+
+**Next steps:** 1. Founder decides: go on slice A (No AI brief) + slice B
+(detector + local passages)? Claude credentials (`ant auth login` or API
+key) so slice C can be measured? 1b. Before making the local model the AI
+default, re-run probe stage C4/C5 UNDER LOAD (card generation while a live
+feed replay runs) — the probe measured it idle; spec §6b flags this. 2. Slice 1 (No AI
+"Last time"/folder brief) spec → Codex; slice 2 (detector + local passages)
+→ Antigravity; probe numbers decide whether slice 3 (Claude cards) can hit
+≤3 s. 3. Marketing docs still say local-first headline — TODO filed.
+
+## Session (2026-09-02, evening) — MEETING-CONTEXT FOLLOW-UP is BUILT + VERIFIED on `feat/meeting-context-followup` (UNCOMMITTED); founder must delete 33 junk test rows from the real DB, then commit/merge
+
+**Founder asks (2026-09-02 evening):** (1) which backlog items are live bugs —
+answer: none of the release/redesign to-dos are; the open 🔴s are Windows-only
+unproven paths (sidecar smoke, EDR) and dev-gated workspace items. (2) "I added a
+meeting while recording — what does it do? It should give me notes/summaries on
+action items." Verified in the founder's DB (meeting 259, 20:37, attachment →
+meeting 166): the attachment was saved and its summary went to the model as
+`attached_context` = background only, so the notes showed NO trace of it
+("Follow-ups: None mentioned"). Typed notes DO work (steer + "From Your Notes").
+(3) Standing rule reaffirmed: always stuntman — Muse / Codex / Antigravity.
+
+**Recon (all in git-excluded `.recon/`, verified by Claude against raw outputs):**
+- `recon-agy-context-probe.md` (Antigravity, 16 runs on the live sidecar
+  :53760 + Ollama `qwen3.5:4b`): today's "background only" wording suppresses
+  follow-ups 6/6; "From Your Notes" appears 3/3 with per-note grounding; with a
+  follow-up instruction the 4B model resolves explicitly-closed items but marks
+  unmentioned items "Resolved" with invented evidence ~50% and drops trailing
+  items → a deterministic reconciler is mandatory. Latency delta +0.5–1.5 s.
+- `recon-muse-meeting-context-ux.md` (Muse, cited): Granola = typed notes are
+  the skeleton; no product auto-injects previous meetings (Fellow has a
+  carry-forward ledger); recommendation = visible "Follow-up from <meeting>"
+  section with per-item states + a sources strip; never invisible background.
+- `recon-agy-context-map.md` (Antigravity, read-only map): attachments are
+  saved BEFORE the queue drains; every re-summarise path (`transcribe_meeting`,
+  `write_missing_notes`, `resummarize_meeting`, `structure_note`) already calls
+  `attached_context_for`; `extract_action_items` keys on headings matching
+  `action item|next step|to-do|deliverable|task`, so a "Follow-up from …"
+  section can never become to-dos; the strip belongs above `<SummaryView>`.
+  (Codex hit its ChatGPT usage limit mid-run — resets 22:34 — so Antigravity
+  did the map.)
+
+**Design (Claude, minimal):** Rust sends a structured `prior_meetings:
+[{title, date, open_items[]}]` (open = `done = 0`, ≤3 meetings × 8 items) next
+to the unchanged `attached_context`; Python adds a `PRIOR MEETING FOLLOW-UP`
+system paragraph + `<prior_open_items>` block asking for a FINAL section
+"Follow-up from previous meeting" with `[P#]`-tagged bullets `Done — /
+Discussed — / Still open — `, and `_ensure_followup_section` reconciles
+deterministically: one bullet per item in order, Done/Discussed accepted ONLY
+when the bullet carries a ≥3-word double-quoted span found verbatim in the
+transcript, otherwise downgraded to Still open; heading renamed to
+"Follow-up from <title>" (generic when the title contains an actionable word);
+section inserted before "From Your Notes". Frontend: "Context used" chip strip
+above the summary (notes · attached meetings clickable via `onOpenMeetingId` ·
+files), companion empty-state copy says what attaching does.
+
+**Built (three stunt workers, Claude-specced/reviewed/verified; specs in
+`.recon/spec-ctx-{1,2,3}-*.md`, results in `.recon/result-impl-*.json`):**
+- Python (Antigravity, +1 fix round): `PriorMeeting` + `SummarizeRequest.
+  prior_meetings`; `PRIOR MEETING FOLLOW-UP` system paragraph +
+  `<prior_open_items>` block; `_ensure_followup_section` reconciler (status
+  keyword anywhere after a separator, last match wins; Done/Discussed only when
+  every ellipsis-split fragment of the quoted evidence is verbatim in the
+  transcript; heading "Follow-up from <title>", generic when the title matches
+  the to-do extractor regex; inserted before "From Your Notes"). 13 new tests.
+- Rust (Antigravity, +2 fix rounds): `types::PriorMeeting`,
+  `SummarizeParams.prior_meetings` (omitted when empty),
+  `commands::prior_meetings_for[_on]` (open `action_items` only, ≤3 meetings ×
+  8 items, "Assignee: text (due …)"), wired into all 8 `SummarizeParams` sites;
+  storage `_on` variants (`get_meeting_on`, `list/add_meeting_attachments_on`,
+  `get_action_items_on`), `create_tables` extracted from `init_db` (now also
+  declares `transcript_turns`, the one column only a migration used to add),
+  `#[cfg(test)] in_memory_db()`. 4 new tests, all on in-memory DBs.
+- Frontend (Muse): "Context used" chip strip above `<SummaryView>` (notes ·
+  attached meetings → `onOpenMeetingId` · files), CSS after `.badge-tag`,
+  companion empty-state copy. 4 new Vitest tests.
+
+**Verified by Claude (not the workers' claims):** pytest 579 passed + 1 skipped
+· ruff clean · tsc clean · vitest 253/253 (25 files) · cargo fmt/clippy
+`-D warnings` clean · cargo test 349 passed + 1 ignored (run with
+`ADVERSARIA_DATA_DIR=$(mktemp -d)`; scratch dir stayed empty; real DB
+`max(id), count(*)` unchanged at 292 | 236). Real-model run of
+`summarize()` on `qwen3.5:4b` (scratchpad `e2e_followup.py`): discussed
+items → "Discussed — …: \"<verbatim quote>\"", unmentioned → "Still open",
+unrelated 17 KB transcript → all "Still open", zero fabrications; the
+section is present in 4/4 runs even when the model omits it.
+
+**⚠️ OPEN — needs the founder's hand (auto-mode blocked the write):** the
+first version of the Rust tests wrote fixture meetings into the REAL DB
+(LESSONS 2026-09-02). Rows 260–292 (33 meetings, 51 action items, 21
+attachments; all fixture titles, all July `recorded_at`, none real) are still
+there and visible in the installed app. Backup already taken:
+`meetings.db.bak-pre-testrow-cleanup-*`. Delete with (app may stay open):
+```
+sqlite3 "$HOME/Library/Application Support/meeting-note-taker/meetings.db" "BEGIN; DELETE FROM chat_messages WHERE meeting_id>259; DELETE FROM action_items WHERE meeting_id>259; DELETE FROM meeting_chunks WHERE meeting_id>259; DELETE FROM chunk_index_state WHERE meeting_id>259; DELETE FROM meeting_attachments WHERE meeting_id>259; DELETE FROM meeting_folders WHERE meeting_id>259; DELETE FROM meeting_workspace_bindings WHERE meeting_id>259; DELETE FROM workspace_tasks WHERE source_meeting_id>259; DELETE FROM recording_assets WHERE meeting_id>259; DELETE FROM meetings WHERE id>259; COMMIT; SELECT max(id), count(*) FROM meetings;"
+```
+Expected result: `259 | 203`. (`meetings_fts` is trigger-maintained.)
+
+**Next steps, in order:**
+1. Founder runs the cleanup above.
+2. Real-app click-through (needs the founder or an explicit go-ahead to stop
+   the installed app): boot the Python service + `npm run tauri dev`, record a
+   short real-speech meeting with a prior meeting that has OPEN to-dos
+   attached (e.g. flip one of meeting 241's items back to open) and typed
+   notes; confirm the "Follow-up from …" section, the chip strip, and that no
+   follow-up bullet became a to-do.
+3. Commit on the branch (Conventional Commit, founder authorizes), merge to
+   master, cut 0.3.84 via the ship ritual. Docs already updated on the branch:
+   ARCHITECTURE (contract), LESSONS (2 entries), TODO (09-02 evening), README,
+   SPEC changelog, STATUS.
+4. Public 0.3.83 release steps (morning block below) still await the founder.
+
+**Gotchas:** never call `init_db`/`connect*` from a Rust test; always run
+`cargo test` with `ADVERSARIA_DATA_DIR=$(mktemp -d)`. The app-support DB is
+plaintext and readable with `sqlite3 "file:…?immutable=1"`. Codex is
+usage-limited until 22:34 tonight; Antigravity ran two sessions in parallel
+fine (one launch died instantly with an empty result — just relaunch).
+`~/.local/bin/stunt` is still the stale copy — use the plugin path.
+
+## Session (2026-09-02, morning) — 0.3.83 CUT + NOTARIZED on master, pushed, installed; public release awaits the founder's word
+
+**Founder's call (2026-09-02, ~00:30):** ship a new version with live captions
+now, without workspaces (they are `import.meta.env.DEV`-gated, so a release
+build hides them anyway); the workspace redesign is "tomorrow". His direction
+and Claude's assessment are in STATUS (09-02 entry) and TODO (09-02 entry).
+
+**State:** `preview/all2` merged into master (`8bfb0ef`, STATUS/HANDOFF
+conflicts resolved by keeping both session blocks), 0.3.83 bumped in the three
+manifests + Cargo.lock with the CHANGELOG entry (`95eebd1`). NOT pushed. Dev app
+and Python service were stopped for the freeze (`.recon/*.pid` are stale).
+Release build ran with the NOTARIZATION §4 command (production Formspree
+endpoint `xykrvprp`, `ADVERSARIA_INSTALL=0`): every stage green through the
+signed DMG — `src-tauri/target/release/bundle/dmg/Adversaria-0.3.83-beta-macos-arm64.dmg`
+(903 MB, Developer ID, `codesign --verify --deep --strict` OK, Info.plist
+0.3.83, updater `.sig` key id `e1b42bed5b7d787f` = the pinned verifier,
+`sherpa_onnx` + `libsherpa-onnx-c-api.dylib` present in the frozen sidecar).
+**Stage 7 failed 4×** overnight with `No Keychain password item found for
+profile: adversaria-notary` although the same profile passed pre-flight 35 min
+earlier. Cause (LESSONS 2026-09-02): the screen was locked and notarytool's
+credential lives in the data-protection keychain, unreadable while locked. A
+detached retry loop (scratchpad `notarize-0.3.83.sh`) polled every 2 min; the
+credential came back at 07:33 (try 132, the Mac unlocked), the intact DMG was
+submitted without a rebuild and **Apple ACCEPTED it (id `cbe8a72b-3c5b-47c5-a78d-1875c173a222`)**.
+Verified by Claude: both DMGs stapled (`stapler validate` OK, identical
+sha256 `200e9aba…`), `spctl` = accepted, source=Notarized Developer ID,
+`provenance-beta.json` written for 0.3.83 @ `95eebd1` (`worktree_dirty: true`
+only because these docs were being edited at the time). Updater archive
+`bundle/macos/Adversaria.app.tar.gz` + `.sig` from the same build.
+
+**Next steps, in order:**
+1. ✅ Done: notarized, stapled, validated, stable-name DMG regenerated.
+   ✅ 08:00 — founder said "push it and install": master pushed to origin
+   (`8107011`), notarized 0.3.83 installed to `/Applications` (Info.plist
+   0.3.83, `spctl` = Notarized Developer ID) and running; its sidecar (dynamic
+   port, e.g. 63224 — NOT 9876) reports transcriber ready + live_captions ready.
+2. Public path from the ship ritual (Claude's attempt to run `sync-public.sh
+   --pr` was blocked by the auto-mode classifier; the founder runs it with
+   `! ./scripts/sync-public.sh --pr` or grants the permission):
+   `./scripts/sync-public.sh --pr` → 3 checks → merge → verify public `main`
+   carries 0.3.83 → `gh workflow run "Windows release candidate" --repo LaghariLabs/adversaria --ref main -f channel=beta -f bundle_cuda=false`
+   → `ADVERSARIA_RELEASE_CHANNEL=beta ADVERSARIA_WINDOWS_DIR=<dir> ./scripts/publish-release.sh "<notes>"`
+   → post-publish verification (manifest version, both assets 200, both sig
+   key ids = `e1b42bed5b7d787f`).
+3. Workspace redesign (STATUS 09-02 for the agreed shape): start with the
+   curation-speed probe, then slices W1–W4 in TODO.
+
+Worktrees `../mnt-wt-{wedge,related,readme,todos}` are merged and removable.
+
+## Session (2026-09-01, night) — LIVE CAPTIONS BUILT, VERIFIED, FOUNDER-SEEN; committed and merged
 
 **COMMITTED on `feat/live-captions` and MERGED into `preview/all2` (founder
 authorized, 2026-09-01 night; three commits: style fmt-normalization, feature,

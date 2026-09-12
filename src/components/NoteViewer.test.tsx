@@ -3,6 +3,18 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+const { shellOpenMock } = vi.hoisted(() => ({ shellOpenMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@tauri-apps/plugin-shell", () => ({ open: shellOpenMock }));
+
+vi.mock("../lib/tauri", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    // @ts-ignore
+    ...actual,
+    getCopilotReceipt: vi.fn().mockResolvedValue({ questions: 0, passages: 0, claude_questions: 0, deepseek_questions: 0, local_questions: 0, web_requested: 0, web_performed: 0 }),
+  };
+});
+
 import { appConfig, pendingMeeting } from "../test/fixtures";
 import type { RelatedMeetingRef } from "../types";
 import { NoteViewer } from "./NoteViewer";
@@ -744,5 +756,257 @@ describe("NoteViewer related meetings", () => {
     await waitFor(() => {
       expect(screen.queryByText("Related meetings")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("NoteViewer context used", () => {
+  it("shows typed notes and attachments as chips", async () => {
+    const meeting = pendingMeeting({
+      id: 99,
+      user_notes: "one\ntwo",
+      summary: "Notes summary",
+      transcript: "hello",
+    });
+    mockIPC((command) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "list_meeting_attachments")
+        return [
+          {
+            id: 1,
+            meeting_id: 99,
+            kind: "meeting",
+            value: "166",
+            label: "Council Meeting",
+            created_at: "2026-09-01T00:00:00Z",
+          },
+          {
+            id: 2,
+            meeting_id: 99,
+            kind: "file",
+            value: "/tmp/brief.md",
+            label: "brief.md",
+            created_at: "2026-09-01T00:00:00Z",
+          },
+        ];
+      if (command === "related_meetings") return [];
+      return null;
+    });
+
+    render(<NoteViewer meeting={meeting} onMeetingUpdated={vi.fn()} />);
+
+    expect(await screen.findByText("Council Meeting")).toBeVisible();
+    expect(screen.getByText("brief.md")).toBeVisible();
+    expect(screen.getByText("Your notes · 2 lines")).toBeVisible();
+    expect(screen.getByText("Context used")).toBeVisible();
+  });
+
+  it("clicking an attached meeting opens it", async () => {
+    const meeting = pendingMeeting({
+      id: 99,
+      user_notes: "one\ntwo",
+      summary: "Notes summary",
+      transcript: "hello",
+    });
+    mockIPC((command) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "list_meeting_attachments")
+        return [
+          {
+            id: 1,
+            meeting_id: 99,
+            kind: "meeting",
+            value: "166",
+            label: "Council Meeting",
+            created_at: "2026-09-01T00:00:00Z",
+          },
+        ];
+      if (command === "related_meetings") return [];
+      return null;
+    });
+    const onOpenMeetingId = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <NoteViewer
+        meeting={meeting}
+        onMeetingUpdated={vi.fn()}
+        onOpenMeetingId={onOpenMeetingId}
+      />,
+    );
+
+    const chip = await screen.findByText("Council Meeting");
+    await user.click(chip);
+    expect(onOpenMeetingId).toHaveBeenCalledWith(166);
+  });
+
+  it("hides the strip when there is nothing to show", async () => {
+    const meeting = pendingMeeting({
+      id: 100,
+      user_notes: "",
+      summary: "Notes summary",
+      transcript: "hello",
+    });
+    mockIPC((command) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "list_meeting_attachments") return [];
+      if (command === "related_meetings") return [];
+      return null;
+    });
+
+    render(<NoteViewer meeting={meeting} onMeetingUpdated={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Context used")).toBeNull();
+    });
+  });
+
+  it("renders (file not included) for attachment without path separator", async () => {
+    const meeting = pendingMeeting({
+      id: 101,
+      user_notes: "notes line",
+      summary: "summary",
+      transcript: "hi",
+    });
+    mockIPC((command) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "related_meetings") return [];
+      if (command === "list_meeting_attachments")
+        return [
+          { id: 9, meeting_id: 101, kind: "file", value: "notes.md", label: "notes.md", created_at: "2026-09-01T00:00:00Z" },
+        ];
+      return null;
+    });
+    render(<NoteViewer meeting={meeting} onMeetingUpdated={vi.fn()} />);
+    expect(await screen.findByText(/file not included/)).toBeVisible();
+  });
+
+  it("does not add suffix when attachment value has path separator", async () => {
+    const meeting = pendingMeeting({
+      id: 102,
+      user_notes: "notes line",
+      summary: "summary",
+      transcript: "hi",
+    });
+    mockIPC((command) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "related_meetings") return [];
+      if (command === "list_meeting_attachments")
+        return [
+          { id: 10, meeting_id: 102, kind: "file", value: "/tmp/foo/notes.md", label: "notes.md", created_at: "2026-09-01T00:00:00Z" },
+        ];
+      return null;
+    });
+    render(<NoteViewer meeting={meeting} onMeetingUpdated={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("notes.md")).toBeVisible());
+    expect(screen.queryByText(/file not included/)).toBeNull();
+  });
+});
+
+describe("NoteViewer export menu", () => {
+  const exportMeeting = pendingMeeting({
+    id: 55,
+    title: "Export Test",
+    recorded_at: "2026-08-10T10:00:00Z",
+    summary: "# Overview\nHello",
+    transcript: "hello",
+    attendees: ["Alice"],
+    audio_file_path: null,
+  });
+
+  it("Export as Slide calls export_html with HTML containing active theme id", async () => {
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.style.setProperty("--bg-primary", "#f6f6f7");
+    document.documentElement.style.setProperty("--bg-secondary", "#efeff1");
+    document.documentElement.style.setProperty("--bg-tertiary", "#ffffff");
+    document.documentElement.style.setProperty("--text-primary", "#1a1a1f");
+    document.documentElement.style.setProperty("--text-secondary", "#494951");
+    document.documentElement.style.setProperty("--text-muted", "#6b6b74");
+    document.documentElement.style.setProperty("--accent-blue", "#007aff");
+    document.documentElement.style.setProperty("--accent-purple", "#7c3aed");
+    document.documentElement.style.setProperty("--accent-green", "#1f9d4d");
+    document.documentElement.style.setProperty("--accent-amber", "#b45309");
+    document.documentElement.style.setProperty("--accent-red", "#d92d20");
+    const captured: { name: string; contents: string }[] = [];
+    mockIPC((command, payload) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "list_meeting_attachments") return [];
+      if (command === "related_meetings") return [];
+      if (command === "export_html") {
+        const p = payload as { defaultName: string; contents: string };
+        captured.push({ name: p.defaultName, contents: p.contents });
+        return "/tmp/Export-Test.html";
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    render(<NoteViewer meeting={exportMeeting} onMeetingUpdated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Export/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Export as Slide…" }));
+    await waitFor(() => expect(captured.length).toBe(1));
+    expect(captured[0].name).toBe("Export-Test.html");
+    expect(captured[0].contents).toContain('name="adversaria-theme" content="light"');
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.style.removeProperty("--bg-primary");
+  });
+
+  it("Export as PDF uses -print file name", async () => {
+    document.documentElement.dataset.theme = "dark";
+    const captured: { name: string }[] = [];
+    shellOpenMock.mockClear();
+    mockIPC((command, payload) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "list_meeting_attachments") return [];
+      if (command === "related_meetings") return [];
+      if (command === "export_html") {
+        const p = payload as { defaultName: string; contents: string };
+        captured.push({ name: p.defaultName });
+        return "/tmp/Export-Test-print.html";
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    render(<NoteViewer meeting={exportMeeting} onMeetingUpdated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Export/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Export as PDF (opens print)…" }));
+    await waitFor(() => expect(captured.length).toBe(1));
+    expect(captured[0].name).toBe("Export-Test-print.html");
+    await waitFor(() => expect(shellOpenMock).toHaveBeenCalledWith("file:///tmp/Export-Test-print.html#print"));
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("Export as .adversaria invokes export_adversaria with meetingIds and folderId null", async () => {
+    const captured: unknown[] = [];
+    mockIPC((command, payload) => {
+      if (command === "list_templates") return [];
+      if (command === "get_action_items") return [];
+      if (command === "get_config") return appConfig();
+      if (command === "list_meeting_attachments") return [];
+      if (command === "related_meetings") return [];
+      if (command === "export_adversaria") {
+        captured.push(payload);
+        return "/tmp/export.adversaria";
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    render(<NoteViewer meeting={exportMeeting} onMeetingUpdated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Export/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Export as \.adversaria/ }));
+    await waitFor(() => expect(captured.length).toBe(1));
+    expect(captured[0]).toEqual({ meetingIds: [55], folderId: null });
   });
 });

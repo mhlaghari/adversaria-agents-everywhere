@@ -9,10 +9,11 @@ use std::sync::OnceLock;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::types::{
-    ActionItem, ContextChunkRow, ContextDoc, Folder, FolderSummary, Meeting, MeetingAttachment,
-    MeetingFolder, MeetingWorkspaceBinding, OnboardingState, RegistrationState, TaskStaffing,
-    Workspace, WorkspaceAddon, WorkspaceArtifact, WorkspaceContextItem, WorkspaceDetail,
-    WorkspaceRun, WorkspaceSummary, WorkspaceTask,
+    ActionItem, BriefBullet, BriefMeetingRef, BriefOpenItem, ContextChunkRow, ContextDoc,
+    CopilotReceipt, Folder, FolderCopilotBrief, FolderSource, FolderSummary, Meeting,
+    MeetingAttachment, MeetingFolder, MeetingWorkspaceBinding, OnboardingState, RegistrationState,
+    TaskStaffing, Workspace, WorkspaceAddon, WorkspaceArtifact, WorkspaceContextItem,
+    WorkspaceDetail, WorkspaceRun, WorkspaceSummary, WorkspaceTask,
 };
 
 /// Path to the SQLite database file.
@@ -56,6 +57,22 @@ fn random_key_hex() -> String {
         s.push_str(&format!("{b:02x}"));
     }
     s
+}
+
+/// Helper: generate a UUID v4 string using `rand`.
+pub fn new_uid() -> String {
+    let mut bytes = [0u8; 16];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // UUID version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5],
+        bytes[6], bytes[7],
+        bytes[8], bytes[9],
+        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+    )
 }
 
 /// Get the DB key from the OS keychain, generating + storing one on first run.
@@ -331,40 +348,11 @@ fn delete_db_key() {
     }
 }
 
-/// Ensure the database directory and schema exist. `encrypt` (from
-/// `config.encrypt_db`) decides whether the DB is kept encrypted at rest: when
-/// true, the key is fetched/created and any plaintext DB is migrated to SQLCipher;
-/// when false, any encrypted DB is decrypted to plaintext and the key removed.
-pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
-    let parent = db_path()
-        .parent()
-        .expect("db_path has no parent")
-        .to_path_buf();
-    std::fs::create_dir_all(&parent)?;
-
-    // Record the encryption mode for per-request connect(), then bring the DB into
-    // that state. Encrypted: get/create the key (cached for connect()) and migrate
-    // any plaintext DB to SQLCipher. Plaintext: decrypt any encrypted DB and drop
-    // the key. Either migration is a verified, backed-up, idempotent no-op when the
-    // DB is already in the target state.
-    let _ = DB_ENCRYPTED.set(encrypt);
-    if encrypt {
-        let key = get_or_create_db_key()?;
-        let _ = DB_KEY.set(key.clone());
-        migrate_plaintext_to_encrypted(&db_path(), &key)?;
-    } else if let Some(key) = read_existing_db_key()? {
-        // A key exists → the DB may be encrypted. Decrypt with it (no-op if the DB
-        // is already plaintext), then drop the key so the keychain prompt stops.
-        // No key means the DB is already plaintext (we remove the key only after a
-        // verified decrypt), so there's nothing to do.
-        migrate_encrypted_to_plaintext(&db_path(), &key)?;
-        delete_db_key();
-    }
-
-    let conn = open_keyed()?;
+fn create_tables(conn: &Connection) -> anyhow::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS meetings (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid         TEXT    NOT NULL DEFAULT '',
             title       TEXT    NOT NULL,
             recorded_at TEXT    NOT NULL,
             duration_seconds REAL NOT NULL DEFAULT 0,
@@ -378,7 +366,8 @@ pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
             tags        TEXT    NOT NULL DEFAULT '[]',
             pinned      INTEGER NOT NULL DEFAULT 0,
             locked      INTEGER NOT NULL DEFAULT 0,
-            archived    INTEGER NOT NULL DEFAULT 0
+            archived    INTEGER NOT NULL DEFAULT 0,
+            transcript_turns TEXT NOT NULL DEFAULT '[]'
         );
         CREATE TABLE IF NOT EXISTS meeting_attachments (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -602,12 +591,48 @@ pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
         );
         CREATE TABLE IF NOT EXISTS folders (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid          TEXT    NOT NULL DEFAULT '',
             name         TEXT    NOT NULL,
             color        TEXT    NOT NULL DEFAULT 'blue',
             instructions TEXT    NOT NULL DEFAULT '',
+            copilot_mode TEXT    NOT NULL DEFAULT 'no_ai',
+            copilot_web  INTEGER NOT NULL DEFAULT 0,
             created_at   TEXT    NOT NULL,
             updated_at   TEXT    NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS folder_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('file','dir')),
+            added_at TEXT NOT NULL,
+            UNIQUE(folder_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS folder_docs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(folder_id, path)
+        );
+        CREATE VIRTUAL TABLE IF NOT EXISTS folder_fts USING fts5(
+            title, body, content='folder_docs', content_rowid='id'
+        );
+        CREATE TRIGGER IF NOT EXISTS folder_fts_ai AFTER INSERT ON folder_docs BEGIN
+            INSERT INTO folder_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS folder_fts_ad AFTER DELETE ON folder_docs BEGIN
+            INSERT INTO folder_fts(folder_fts, rowid, title, body)
+            VALUES ('delete', old.id, old.title, old.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS folder_fts_au AFTER UPDATE OF title, body ON folder_docs BEGIN
+            INSERT INTO folder_fts(folder_fts, rowid, title, body)
+            VALUES ('delete', old.id, old.title, old.body);
+            INSERT INTO folder_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+        END;
         CREATE TABLE IF NOT EXISTS meeting_folders (
             meeting_id INTEGER PRIMARY KEY,
             folder_id  INTEGER,
@@ -619,8 +644,212 @@ pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
             summary      TEXT NOT NULL,
             source_hash  TEXT NOT NULL,
             generated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS copilot_cards (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            epoch           INTEGER NOT NULL,
+            card_id         INTEGER NOT NULL,
+            folder_id       INTEGER,
+            meeting_id      INTEGER,
+            provider        TEXT    NOT NULL,
+            question        TEXT    NOT NULL,
+            passages_json   TEXT    NOT NULL,
+            answer_md       TEXT,
+            provenance_json TEXT,
+            egress_chars    INTEGER NOT NULL DEFAULT 0,
+            web_used        INTEGER NOT NULL DEFAULT 0,
+            cancelled       INTEGER NOT NULL DEFAULT 0,
+            at              TEXT    NOT NULL,
+            session_id      TEXT    NOT NULL DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT 'done',
+            reason          TEXT,
+            \"trigger\"       TEXT    NOT NULL DEFAULT 'auto',
+            provider_frozen TEXT    NOT NULL DEFAULT 'no_ai',
+            retry_of        INTEGER,
+            dispatched      INTEGER NOT NULL DEFAULT 0,
+            error           TEXT,
+            egress_bytes    INTEGER NOT NULL DEFAULT 0,
+            web_requested   INTEGER NOT NULL DEFAULT 0,
+            web_performed   INTEGER NOT NULL DEFAULT 0,
+            finished_at     TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_copilot_cards_epoch ON copilot_cards(epoch);
+        CREATE INDEX IF NOT EXISTS idx_copilot_cards_meeting ON copilot_cards(meeting_id);
+        CREATE TABLE IF NOT EXISTS copilot_sessions (
+            session_id    TEXT PRIMARY KEY,
+            meeting_id    INTEGER,
+            folder_id     INTEGER,
+            mode_at_start TEXT NOT NULL,
+            started_at    TEXT NOT NULL
         );",
     )?;
+    migrate_folder_copilot_fields(conn)?;
+    migrate_copilot_slice2(conn)?;
+    if column_exists(conn, "copilot_cards", "session_id")? {
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_copilot_cards_session ON copilot_cards(session_id)",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+fn migrate_copilot_slice2(conn: &Connection) -> anyhow::Result<()> {
+    for (table, column, definition) in [
+        ("copilot_sessions", "pack_text", "TEXT NOT NULL DEFAULT ''"),
+        ("copilot_sessions", "pack_hash", "TEXT NOT NULL DEFAULT ''"),
+        ("copilot_cards", "resolved_question", "TEXT"),
+        ("folders", "folder_terms", "TEXT NOT NULL DEFAULT '[]'"),
+    ] {
+        if !column_exists(conn, table, column)? {
+            conn.execute(
+                &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+                [],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+pub fn set_session_pack_on(
+    conn: &Connection,
+    session_id: &str,
+    text: &str,
+    hash: &str,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(text.len() <= 6_000, "Standing pack exceeds 6000 bytes");
+    let updated = conn.execute(
+        "UPDATE copilot_sessions SET pack_text = ?2, pack_hash = ?3 WHERE session_id = ?1",
+        params![session_id, text, hash],
+    )?;
+    anyhow::ensure!(updated == 1, "Copilot session not found");
+    Ok(())
+}
+
+pub fn get_session_pack_on(
+    conn: &Connection,
+    session_id: &str,
+) -> anyhow::Result<(String, String)> {
+    Ok(conn.query_row(
+        "SELECT pack_text, pack_hash FROM copilot_sessions WHERE session_id = ?1",
+        [session_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?)
+}
+
+pub fn set_folder_terms_on(
+    conn: &Connection,
+    folder_id: i64,
+    terms: &[String],
+) -> anyhow::Result<()> {
+    let mut terms: Vec<_> = terms.iter().map(|term| term.to_lowercase()).collect();
+    terms.sort();
+    terms.dedup();
+    conn.execute(
+        "UPDATE folders SET folder_terms = ?2 WHERE id = ?1",
+        params![folder_id, serde_json::to_string(&terms)?],
+    )?;
+    Ok(())
+}
+
+pub fn get_folder_terms_on(conn: &Connection, folder_id: i64) -> anyhow::Result<Vec<String>> {
+    let json: String = conn.query_row(
+        "SELECT folder_terms FROM folders WHERE id = ?1",
+        [folder_id],
+        |row| row.get(0),
+    )?;
+    Ok(serde_json::from_str(&json)?)
+}
+
+pub struct RecentDoneCard {
+    pub card_id: u64,
+    pub question: String,
+    pub answer_md: String,
+    pub passages_json: String,
+}
+
+pub fn recent_done_cards_on(
+    conn: &Connection,
+    session_id: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<RecentDoneCard>> {
+    let mut stmt = conn.prepare("SELECT * FROM (
+        SELECT id, card_id, question, answer_md, passages_json, provenance_json, finished_at
+        FROM copilot_cards
+        WHERE session_id = ?1 AND status = 'done' AND provider_frozen != 'no_ai' AND answer_md LIKE 'SAY: %'
+        ORDER BY finished_at DESC, id DESC LIMIT ?2
+    ) ORDER BY finished_at ASC, id ASC")?;
+    let rows = stmt
+        .query_map(params![session_id, limit.min(3) as i64], |row| {
+            Ok(RecentDoneCard {
+                card_id: row.get(1)?,
+                question: row.get(2)?,
+                answer_md: row.get(3)?,
+                passages_json: row.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+fn migrate_folder_copilot_fields(conn: &Connection) -> anyhow::Result<()> {
+    for column in [
+        "purpose",
+        "profile",
+        "profile_hash",
+        "profile_at",
+        "voice_1",
+        "voice_2",
+    ] {
+        if !column_exists(conn, "folders", column)? {
+            conn.execute(
+                &format!("ALTER TABLE folders ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"),
+                [],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn in_memory_db() -> Connection {
+    let conn = Connection::open_in_memory().expect("open_in_memory failed");
+    create_tables(&conn).expect("create_tables on in_memory_db failed");
+    conn
+}
+
+/// Ensure the database directory and schema exist. `encrypt` (from
+/// `config.encrypt_db`) decides whether the DB is kept encrypted at rest: when
+/// true, the key is fetched/created and any plaintext DB is migrated to SQLCipher;
+/// when false, any encrypted DB is decrypted to plaintext and the key removed.
+pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
+    let parent = db_path()
+        .parent()
+        .expect("db_path has no parent")
+        .to_path_buf();
+    std::fs::create_dir_all(&parent)?;
+
+    // Record the encryption mode for per-request connect(), then bring the DB into
+    // that state. Encrypted: get/create the key (cached for connect()) and migrate
+    // any plaintext DB to SQLCipher. Plaintext: decrypt any encrypted DB and drop
+    // the key. Either migration is a verified, backed-up, idempotent no-op when the
+    // DB is already in the target state.
+    let _ = DB_ENCRYPTED.set(encrypt);
+    if encrypt {
+        let key = get_or_create_db_key()?;
+        let _ = DB_KEY.set(key.clone());
+        migrate_plaintext_to_encrypted(&db_path(), &key)?;
+    } else if let Some(key) = read_existing_db_key()? {
+        // A key exists → the DB may be encrypted. Decrypt with it (no-op if the DB
+        // is already plaintext), then drop the key so the keychain prompt stops.
+        // No key means the DB is already plaintext (we remove the key only after a
+        // verified decrypt), so there's nothing to do.
+        migrate_encrypted_to_plaintext(&db_path(), &key)?;
+        delete_db_key();
+    }
+
+    let conn = open_keyed()?;
+    create_tables(&conn)?;
 
     seed_builtin_addons_on(&conn)?;
     migrate_workspace_tasks_v2(&conn)?;
@@ -663,6 +892,46 @@ pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
             [],
         )?;
     }
+    if !column_exists(&conn, "folders", "copilot_mode")? {
+        conn.execute(
+            "ALTER TABLE folders ADD COLUMN copilot_mode TEXT NOT NULL DEFAULT 'no_ai'",
+            [],
+        )?;
+    }
+    migrate_folder_copilot_fields(&conn)?;
+    if !column_exists(&conn, "copilot_cards", "id")? {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS copilot_cards (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                epoch           INTEGER NOT NULL,
+                card_id         INTEGER NOT NULL,
+                folder_id       INTEGER,
+                meeting_id      INTEGER,
+                provider        TEXT    NOT NULL,
+                question        TEXT    NOT NULL,
+                passages_json   TEXT    NOT NULL,
+                answer_md       TEXT,
+                provenance_json TEXT,
+                egress_chars    INTEGER NOT NULL DEFAULT 0,
+                web_used        INTEGER NOT NULL DEFAULT 0,
+                cancelled       INTEGER NOT NULL DEFAULT 0,
+                at              TEXT    NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_copilot_cards_epoch ON copilot_cards(epoch)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_copilot_cards_meeting ON copilot_cards(meeting_id)",
+            [],
+        )?;
+    }
+
+    migrate_copilot_v2(&conn)?;
+    migrate_copilot_slice2(&conn)?;
+
     migrate_workspace_bindings_to_folders(&conn)?;
     migrate_context_docs_name(&conn)?;
 
@@ -762,6 +1031,18 @@ pub fn init_db(encrypt: bool) -> anyhow::Result<()> {
             [],
         )?;
     }
+    if !column_exists(&conn, "meetings", "uid")? {
+        conn.execute(
+            "ALTER TABLE meetings ADD COLUMN uid TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
+    if !column_exists(&conn, "folders", "uid")? {
+        conn.execute(
+            "ALTER TABLE folders ADD COLUMN uid TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
     // Migration: contact details on `people`, added when profiles grew CRM fields.
     for column in ["email", "phone", "linkedin"] {
         if !column_exists(&conn, "people", column)? {
@@ -812,6 +1093,37 @@ fn run_startup_backfills(conn: &Connection) -> anyhow::Result<()> {
     // still empty. action_items: extract action items for meetings that have none.
     backfill_transcript_turns(conn)?;
     backfill_action_items(conn)?;
+    backfill_uids(conn)?;
+    Ok(())
+}
+
+/// One-time backfill: ensure every meeting and folder row has a non-empty stable UUID v4.
+pub fn backfill_uids(conn: &Connection) -> anyhow::Result<()> {
+    let mut stmt = conn.prepare("SELECT id FROM meetings WHERE uid = ''")?;
+    let meeting_ids: Vec<i64> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    for id in meeting_ids {
+        let uid = new_uid();
+        conn.execute(
+            "UPDATE meetings SET uid = ?1 WHERE id = ?2",
+            params![uid, id],
+        )?;
+    }
+
+    let mut stmt = conn.prepare("SELECT id FROM folders WHERE uid = ''")?;
+    let folder_ids: Vec<i64> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    for id in folder_ids {
+        let uid = new_uid();
+        conn.execute(
+            "UPDATE folders SET uid = ?1 WHERE id = ?2",
+            params![uid, id],
+        )?;
+    }
     Ok(())
 }
 
@@ -874,7 +1186,7 @@ fn is_db_corruption(err: &anyhow::Error) -> bool {
 /// Create the FTS5 index over meetings + keep-in-sync triggers, and backfill
 /// existing rows once. Returns Err if FTS5 isn't compiled into this SQLite — the
 /// caller treats that as non-fatal.
-fn setup_fts(conn: &Connection) -> anyhow::Result<()> {
+pub fn setup_fts(conn: &Connection) -> anyhow::Result<()> {
     conn.execute_batch(
         "CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts USING fts5(
             title, summary, transcript, content='meetings', content_rowid='id'
@@ -909,7 +1221,7 @@ fn setup_fts(conn: &Connection) -> anyhow::Result<()> {
 
 /// Create the external-content FTS index for vault notes and project cards,
 /// install keep-in-sync triggers, and backfill rows created before the index.
-fn setup_context_fts(conn: &Connection) -> anyhow::Result<()> {
+pub fn setup_context_fts(conn: &Connection) -> anyhow::Result<()> {
     conn.execute_batch(
         "CREATE VIRTUAL TABLE IF NOT EXISTS context_fts USING fts5(
             title, name, body, content='context_docs', content_rowid='id'
@@ -945,12 +1257,20 @@ fn fts_match_expression(query: &str) -> String {
 /// Return meeting ids ranked by FTS5 relevance to `query` (best matches first).
 /// Returns Err if FTS5 is unavailable; the caller falls back to keyword ranking.
 pub fn search_meeting_ids(query: &str, limit: usize) -> anyhow::Result<Vec<i64>> {
+    let conn = connect()?;
+    search_meeting_ids_on(&conn, query, limit)
+}
+
+pub fn search_meeting_ids_on(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<i64>> {
     // Build a safe FTS MATCH expression: quote each term, OR them for recall.
     let match_expr = fts_match_expression(query);
-    if match_expr.is_empty() {
+    if match_expr.is_empty() || limit == 0 {
         return Ok(Vec::new());
     }
-    let conn = connect()?;
     let mut stmt = conn.prepare(
         "SELECT rowid FROM meetings_fts WHERE meetings_fts MATCH ?1 ORDER BY rank LIMIT ?2",
     )?;
@@ -975,6 +1295,77 @@ fn column_exists(conn: &Connection, table: &str, column: &str) -> anyhow::Result
         }
     }
     Ok(false)
+}
+
+/// Heal every Copilot v2 schema field independently. An interrupted upgrade may
+/// have committed only some `ALTER TABLE` statements, so no field is gated by
+/// the presence of another one.
+fn migrate_copilot_v2(conn: &Connection) -> anyhow::Result<()> {
+    if !column_exists(conn, "folders", "copilot_web")? {
+        conn.execute(
+            "ALTER TABLE folders ADD COLUMN copilot_web INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+
+    let columns = [
+        ("session_id", "TEXT NOT NULL DEFAULT ''"),
+        ("status", "TEXT NOT NULL DEFAULT 'done'"),
+        ("reason", "TEXT"),
+        ("trigger", "TEXT NOT NULL DEFAULT 'auto'"),
+        ("provider_frozen", "TEXT NOT NULL DEFAULT 'no_ai'"),
+        ("retry_of", "INTEGER"),
+        ("dispatched", "INTEGER NOT NULL DEFAULT 0"),
+        ("error", "TEXT"),
+        ("egress_bytes", "INTEGER NOT NULL DEFAULT 0"),
+        ("web_requested", "INTEGER NOT NULL DEFAULT 0"),
+        ("web_performed", "INTEGER NOT NULL DEFAULT 0"),
+        ("finished_at", "TEXT"),
+    ];
+    for (column, definition) in columns {
+        if !column_exists(conn, "copilot_cards", column)? {
+            conn.execute(
+                &format!("ALTER TABLE copilot_cards ADD COLUMN \"{column}\" {definition}"),
+                [],
+            )?;
+        }
+    }
+
+    conn.execute(
+        "UPDATE copilot_cards
+            SET session_id = 'legacy-epoch-' || CAST(epoch AS TEXT)
+          WHERE session_id = ''",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE copilot_cards
+            SET provider_frozen = provider,
+                status = CASE WHEN cancelled != 0 THEN 'cancelled' ELSE 'done' END,
+                egress_bytes = egress_chars,
+                web_performed = web_used,
+                dispatched = CASE
+                    WHEN cancelled = 0 AND provider IN ('local', 'claude') THEN 1
+                    ELSE 0
+                END,
+                finished_at = COALESCE(finished_at, at)
+          WHERE session_id LIKE 'legacy-epoch-%'",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_copilot_cards_session ON copilot_cards(session_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS copilot_sessions (
+            session_id    TEXT PRIMARY KEY,
+            meeting_id    INTEGER,
+            folder_id     INTEGER,
+            mode_at_start TEXT NOT NULL,
+            started_at    TEXT NOT NULL
+        )",
+        [],
+    )?;
+    Ok(())
 }
 
 /// Copy the former Meetings-side workspace filing state into independent folders once.
@@ -1162,7 +1553,7 @@ fn migrate_context_docs_name(conn: &Connection) -> anyhow::Result<()> {
 }
 
 /// Encode an attendee list for storage as a JSON text column.
-fn encode_attendees(attendees: &[String]) -> String {
+pub fn encode_attendees(attendees: &[String]) -> String {
     serde_json::to_string(attendees).unwrap_or_else(|_| "[]".to_string())
 }
 
@@ -1171,7 +1562,7 @@ fn decode_attendees(raw: &str) -> Vec<String> {
     serde_json::from_str(raw).unwrap_or_default()
 }
 
-fn encode_tags(tags: &[crate::types::Tag]) -> String {
+pub fn encode_tags(tags: &[crate::types::Tag]) -> String {
     serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string())
 }
 
@@ -1220,7 +1611,7 @@ pub fn parse_transcript_turns(transcript: &str) -> Vec<crate::types::TranscriptT
     turns
 }
 
-fn encode_transcript_turns(turns: &[crate::types::TranscriptTurn]) -> String {
+pub fn encode_transcript_turns(turns: &[crate::types::TranscriptTurn]) -> String {
     serde_json::to_string(turns).unwrap_or_else(|_| "[]".to_string())
 }
 
@@ -1292,13 +1683,43 @@ pub fn insert_meeting(meeting: &Meeting) -> anyhow::Result<i64> {
     insert_meeting_on(&conn, meeting)
 }
 
+/// Insert a meeting and, when supplied, immutably bind its Copilot session in
+/// the same transaction. A failed/mismatched bind rolls the meeting insert back.
+pub fn insert_meeting_with_copilot_session(
+    meeting: &Meeting,
+    copilot_session_id: Option<&str>,
+) -> anyhow::Result<i64> {
+    let conn = connect()?;
+    insert_meeting_with_copilot_session_on(&conn, meeting, copilot_session_id)
+}
+
+pub fn insert_meeting_with_copilot_session_on(
+    conn: &Connection,
+    meeting: &Meeting,
+    copilot_session_id: Option<&str>,
+) -> anyhow::Result<i64> {
+    let transaction = conn.unchecked_transaction()?;
+    let meeting_id = insert_meeting_on(&transaction, meeting)?;
+    if let Some(session_id) = copilot_session_id.filter(|value| !value.trim().is_empty()) {
+        attach_copilot_session_in_transaction(&transaction, session_id, meeting_id)?;
+    }
+    transaction.commit()?;
+    Ok(meeting_id)
+}
+
 /// [`insert_meeting`] on a caller-supplied connection, for writers that need
 /// several statements on one connection (e.g. the demo seeder).
 pub fn insert_meeting_on(conn: &Connection, meeting: &Meeting) -> anyhow::Result<i64> {
+    let uid = if meeting.uid.trim().is_empty() {
+        new_uid()
+    } else {
+        meeting.uid.clone()
+    };
     conn.execute(
-        "INSERT INTO meetings (title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, link, tags, transcript_turns)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO meetings (uid, title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, link, tags, transcript_turns, pinned, locked, archived)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
+            uid,
             meeting.title,
             meeting.recorded_at,
             meeting.duration_seconds,
@@ -1311,6 +1732,9 @@ pub fn insert_meeting_on(conn: &Connection, meeting: &Meeting) -> anyhow::Result
             meeting.link,
             encode_tags(&meeting.tags),
             encode_transcript_turns(&meeting.transcript_turns),
+            meeting.pinned,
+            meeting.locked,
+            meeting.archived,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -1961,28 +2385,29 @@ pub fn meetings_are_empty(conn: &Connection) -> anyhow::Result<bool> {
 pub fn get_meetings() -> anyhow::Result<Vec<Meeting>> {
     let conn = connect()?;
     let mut stmt = conn.prepare(
-        "SELECT id, title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, tags, pinned, locked, archived, transcript_turns, link
+        "SELECT id, uid, title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, tags, pinned, locked, archived, transcript_turns, link
          FROM meetings
          ORDER BY pinned DESC, recorded_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Meeting {
             id: row.get(0)?,
-            title: row.get(1)?,
-            recorded_at: row.get(2)?,
-            duration_seconds: row.get(3)?,
-            transcript: row.get(4)?,
-            summary: row.get(5)?,
-            template_used: row.get(6)?,
-            audio_file_path: row.get(7)?,
-            attendees: decode_attendees(&row.get::<_, String>(8)?),
-            user_notes: row.get(9)?,
-            tags: decode_tags(&row.get::<_, String>(10)?),
-            pinned: row.get(11)?,
-            locked: row.get(12)?,
-            archived: row.get(13)?,
-            transcript_turns: decode_transcript_turns(&row.get::<_, String>(14)?),
-            link: row.get(15)?,
+            uid: row.get(1)?,
+            title: row.get(2)?,
+            recorded_at: row.get(3)?,
+            duration_seconds: row.get(4)?,
+            transcript: row.get(5)?,
+            summary: row.get(6)?,
+            template_used: row.get(7)?,
+            audio_file_path: row.get(8)?,
+            attendees: decode_attendees(&row.get::<_, String>(9)?),
+            user_notes: row.get(10)?,
+            tags: decode_tags(&row.get::<_, String>(11)?),
+            pinned: row.get(12)?,
+            locked: row.get(13)?,
+            archived: row.get(14)?,
+            transcript_turns: decode_transcript_turns(&row.get::<_, String>(15)?),
+            link: row.get(16)?,
         })
     })?;
     let mut meetings = Vec::new();
@@ -1995,29 +2420,35 @@ pub fn get_meetings() -> anyhow::Result<Vec<Meeting>> {
 /// Look up a single meeting by its id.
 pub fn get_meeting(id: i64) -> anyhow::Result<Option<Meeting>> {
     let conn = connect()?;
+    get_meeting_on(&conn, id)
+}
+
+/// [`get_meeting`] on a caller-supplied connection.
+pub fn get_meeting_on(conn: &Connection, id: i64) -> anyhow::Result<Option<Meeting>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, tags, pinned, locked, archived, transcript_turns, link
+        "SELECT id, uid, title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, tags, pinned, locked, archived, transcript_turns, link
          FROM meetings
          WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| {
         Ok(Meeting {
             id: row.get(0)?,
-            title: row.get(1)?,
-            recorded_at: row.get(2)?,
-            duration_seconds: row.get(3)?,
-            transcript: row.get(4)?,
-            summary: row.get(5)?,
-            template_used: row.get(6)?,
-            audio_file_path: row.get(7)?,
-            attendees: decode_attendees(&row.get::<_, String>(8)?),
-            user_notes: row.get(9)?,
-            tags: decode_tags(&row.get::<_, String>(10)?),
-            pinned: row.get(11)?,
-            locked: row.get(12)?,
-            archived: row.get(13)?,
-            transcript_turns: decode_transcript_turns(&row.get::<_, String>(14)?),
-            link: row.get(15)?,
+            uid: row.get(1)?,
+            title: row.get(2)?,
+            recorded_at: row.get(3)?,
+            duration_seconds: row.get(4)?,
+            transcript: row.get(5)?,
+            summary: row.get(6)?,
+            template_used: row.get(7)?,
+            audio_file_path: row.get(8)?,
+            attendees: decode_attendees(&row.get::<_, String>(9)?),
+            user_notes: row.get(10)?,
+            tags: decode_tags(&row.get::<_, String>(11)?),
+            pinned: row.get(12)?,
+            locked: row.get(13)?,
+            archived: row.get(14)?,
+            transcript_turns: decode_transcript_turns(&row.get::<_, String>(15)?),
+            link: row.get(16)?,
         })
     })?;
     match rows.next() {
@@ -2026,11 +2457,59 @@ pub fn get_meeting(id: i64) -> anyhow::Result<Option<Meeting>> {
     }
 }
 
+/// Look up a single meeting by its stable UID on a caller-supplied connection.
+pub fn get_meeting_by_uid_on(conn: &Connection, uid: &str) -> anyhow::Result<Option<Meeting>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, uid, title, recorded_at, duration_seconds, transcript, summary, template_used, audio_file_path, attendees, user_notes, tags, pinned, locked, archived, transcript_turns, link
+         FROM meetings
+         WHERE uid = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![uid], |row| {
+        Ok(Meeting {
+            id: row.get(0)?,
+            uid: row.get(1)?,
+            title: row.get(2)?,
+            recorded_at: row.get(3)?,
+            duration_seconds: row.get(4)?,
+            transcript: row.get(5)?,
+            summary: row.get(6)?,
+            template_used: row.get(7)?,
+            audio_file_path: row.get(8)?,
+            attendees: decode_attendees(&row.get::<_, String>(9)?),
+            user_notes: row.get(10)?,
+            tags: decode_tags(&row.get::<_, String>(11)?),
+            pinned: row.get(12)?,
+            locked: row.get(13)?,
+            archived: row.get(14)?,
+            transcript_turns: decode_transcript_turns(&row.get::<_, String>(15)?),
+            link: row.get(16)?,
+        })
+    })?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
+/// Look up a single meeting by its stable UID.
+pub fn get_meeting_by_uid(uid: &str) -> anyhow::Result<Option<Meeting>> {
+    let conn = connect()?;
+    get_meeting_by_uid_on(&conn, uid)
+}
+
 /// Meetings explicitly filed to a folder, newest first.
 pub fn get_meetings_for_folder(folder_id: i64) -> anyhow::Result<Vec<Meeting>> {
     let conn = connect()?;
+    get_meetings_for_folder_on(&conn, folder_id)
+}
+
+/// [`get_meetings_for_folder`] on a caller-supplied connection.
+pub fn get_meetings_for_folder_on(
+    conn: &Connection,
+    folder_id: i64,
+) -> anyhow::Result<Vec<Meeting>> {
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.title, m.recorded_at, m.duration_seconds, m.transcript, m.summary, m.template_used, m.audio_file_path, m.attendees, m.user_notes, m.tags, m.pinned, m.locked, m.archived, m.transcript_turns, m.link
+        "SELECT m.id, m.uid, m.title, m.recorded_at, m.duration_seconds, m.transcript, m.summary, m.template_used, m.audio_file_path, m.attendees, m.user_notes, m.tags, m.pinned, m.locked, m.archived, m.transcript_turns, m.link
          FROM meetings m
          INNER JOIN meeting_folders mf ON mf.meeting_id = m.id
          WHERE mf.folder_id = ?1
@@ -2039,21 +2518,22 @@ pub fn get_meetings_for_folder(folder_id: i64) -> anyhow::Result<Vec<Meeting>> {
     let rows = stmt.query_map(params![folder_id], |row| {
         Ok(Meeting {
             id: row.get(0)?,
-            title: row.get(1)?,
-            recorded_at: row.get(2)?,
-            duration_seconds: row.get(3)?,
-            transcript: row.get(4)?,
-            summary: row.get(5)?,
-            template_used: row.get(6)?,
-            audio_file_path: row.get(7)?,
-            attendees: decode_attendees(&row.get::<_, String>(8)?),
-            user_notes: row.get(9)?,
-            tags: decode_tags(&row.get::<_, String>(10)?),
-            pinned: row.get(11)?,
-            locked: row.get(12)?,
-            archived: row.get(13)?,
-            transcript_turns: decode_transcript_turns(&row.get::<_, String>(14)?),
-            link: row.get(15)?,
+            uid: row.get(1)?,
+            title: row.get(2)?,
+            recorded_at: row.get(3)?,
+            duration_seconds: row.get(4)?,
+            transcript: row.get(5)?,
+            summary: row.get(6)?,
+            template_used: row.get(7)?,
+            audio_file_path: row.get(8)?,
+            attendees: decode_attendees(&row.get::<_, String>(9)?),
+            user_notes: row.get(10)?,
+            tags: decode_tags(&row.get::<_, String>(11)?),
+            pinned: row.get(12)?,
+            locked: row.get(13)?,
+            archived: row.get(14)?,
+            transcript_turns: decode_transcript_turns(&row.get::<_, String>(15)?),
+            link: row.get(16)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -2071,7 +2551,7 @@ pub(crate) fn get_meetings_for_workspace_on(
     workspace_id: i64,
 ) -> anyhow::Result<Vec<Meeting>> {
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.title, m.recorded_at, m.duration_seconds, m.transcript, m.summary, m.template_used, m.audio_file_path, m.attendees, m.user_notes, m.tags, m.pinned, m.locked, m.archived, m.transcript_turns, m.link
+        "SELECT m.id, m.uid, m.title, m.recorded_at, m.duration_seconds, m.transcript, m.summary, m.template_used, m.audio_file_path, m.attendees, m.user_notes, m.tags, m.pinned, m.locked, m.archived, m.transcript_turns, m.link
          FROM meetings m
          INNER JOIN meeting_workspace_bindings b ON b.meeting_id = m.id
          WHERE b.workspace_id = ?1
@@ -2080,21 +2560,22 @@ pub(crate) fn get_meetings_for_workspace_on(
     let rows = stmt.query_map(params![workspace_id], |row| {
         Ok(Meeting {
             id: row.get(0)?,
-            title: row.get(1)?,
-            recorded_at: row.get(2)?,
-            duration_seconds: row.get(3)?,
-            transcript: row.get(4)?,
-            summary: row.get(5)?,
-            template_used: row.get(6)?,
-            audio_file_path: row.get(7)?,
-            attendees: decode_attendees(&row.get::<_, String>(8)?),
-            user_notes: row.get(9)?,
-            tags: decode_tags(&row.get::<_, String>(10)?),
-            pinned: row.get(11)?,
-            locked: row.get(12)?,
-            archived: row.get(13)?,
-            transcript_turns: decode_transcript_turns(&row.get::<_, String>(14)?),
-            link: row.get(15)?,
+            uid: row.get(1)?,
+            title: row.get(2)?,
+            recorded_at: row.get(3)?,
+            duration_seconds: row.get(4)?,
+            transcript: row.get(5)?,
+            summary: row.get(6)?,
+            template_used: row.get(7)?,
+            audio_file_path: row.get(8)?,
+            attendees: decode_attendees(&row.get::<_, String>(9)?),
+            user_notes: row.get(10)?,
+            tags: decode_tags(&row.get::<_, String>(11)?),
+            pinned: row.get(12)?,
+            locked: row.get(13)?,
+            archived: row.get(14)?,
+            transcript_turns: decode_transcript_turns(&row.get::<_, String>(15)?),
+            link: row.get(16)?,
         })
     })?;
     let mut meetings = Vec::new();
@@ -2109,8 +2590,17 @@ pub fn add_meeting_attachments(
     meeting_id: i64,
     items: &[(String, String, String)],
 ) -> anyhow::Result<Vec<MeetingAttachment>> {
-    let mut conn = connect()?;
-    let tx = conn.transaction()?;
+    let conn = connect()?;
+    add_meeting_attachments_on(&conn, meeting_id, items)
+}
+
+/// [`add_meeting_attachments`] on a caller-supplied connection.
+pub fn add_meeting_attachments_on(
+    conn: &Connection,
+    meeting_id: i64,
+    items: &[(String, String, String)],
+) -> anyhow::Result<Vec<MeetingAttachment>> {
+    let tx = conn.unchecked_transaction()?;
     let created_at = chrono::Utc::now().to_rfc3339();
     for (kind, value, label) in items {
         tx.execute(
@@ -2120,12 +2610,20 @@ pub fn add_meeting_attachments(
         )?;
     }
     tx.commit()?;
-    list_meeting_attachments(meeting_id)
+    list_meeting_attachments_on(conn, meeting_id)
 }
 
 /// Return one meeting's context attachments in insertion order.
 pub fn list_meeting_attachments(meeting_id: i64) -> anyhow::Result<Vec<MeetingAttachment>> {
     let conn = connect()?;
+    list_meeting_attachments_on(&conn, meeting_id)
+}
+
+/// [`list_meeting_attachments`] on a caller-supplied connection.
+pub fn list_meeting_attachments_on(
+    conn: &Connection,
+    meeting_id: i64,
+) -> anyhow::Result<Vec<MeetingAttachment>> {
     let mut stmt = conn.prepare(
         "SELECT id, meeting_id, kind, value, label, created_at
          FROM meeting_attachments
@@ -2257,6 +2755,47 @@ pub fn clear_ask_messages() -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 // Action items
 // ---------------------------------------------------------------------------
+
+/// Return non-placeholder bullets from every bold-markdown section whose
+/// heading matches `heading_re`.
+pub fn summary_section_bullets(summary: &str, heading_re: &regex::Regex) -> Vec<String> {
+    let markdown_heading_re = regex::Regex::new(r"^\*\*(.+?)\*\*:?$").unwrap();
+    let bullet_re = regex::Regex::new(r"^[-*•]\s+(.*)$").unwrap();
+    let mut in_matching_section = false;
+    let mut bullets = Vec::new();
+
+    for line in summary.lines() {
+        let trimmed = line.trim();
+        if let Some(captures) = markdown_heading_re.captures(trimmed) {
+            let heading = captures[1].trim_end_matches(':').trim();
+            in_matching_section = heading_re.is_match(heading);
+            continue;
+        }
+        if !in_matching_section {
+            continue;
+        }
+        if let Some(captures) = bullet_re.captures(trimmed) {
+            let bullet = captures[1].trim();
+            if !is_placeholder_summary_bullet(bullet) {
+                bullets.push(bullet.to_string());
+            }
+        }
+    }
+
+    bullets
+}
+
+fn is_placeholder_summary_bullet(bullet: &str) -> bool {
+    let normalized = bullet.trim().to_lowercase();
+    normalized.is_empty()
+        || normalized == "none"
+        || normalized == "n/a"
+        || normalized == "na"
+        || normalized == "-"
+        || normalized == "—"
+        || normalized.starts_with("none ")
+        || bullet.contains("لا يوجد")
+}
 
 /// Raw extracted item (no id/meeting_id — assigned at sync).
 struct ActionItemRaw {
@@ -2649,6 +3188,14 @@ fn backfill_action_items(conn: &Connection) -> anyhow::Result<()> {
 /// all meetings ordered by meeting_id, ord.
 pub fn get_action_items(meeting_id: Option<i64>) -> anyhow::Result<Vec<ActionItem>> {
     let conn = connect()?;
+    get_action_items_on(&conn, meeting_id)
+}
+
+/// [`get_action_items`] on a caller-supplied connection.
+pub fn get_action_items_on(
+    conn: &Connection,
+    meeting_id: Option<i64>,
+) -> anyhow::Result<Vec<ActionItem>> {
     let (sql, params_vec): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match meeting_id {
         Some(_) => (
             "SELECT id, meeting_id, ord, text, assignee, due, done
@@ -2835,6 +3382,26 @@ pub fn get_chunks_for_model(model: &str) -> anyhow::Result<Vec<crate::types::Chu
     Ok(out)
 }
 
+/// Retrieve the text of all chunks for a meeting, ordered by chunk_index.
+pub fn get_meeting_chunk_texts_on(
+    conn: &Connection,
+    meeting_id: i64,
+) -> anyhow::Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT text FROM meeting_chunks WHERE meeting_id = ?1 ORDER BY chunk_index")?;
+    let rows = stmt.query_map(params![meeting_id], |row| row.get::<_, String>(0))?;
+    let mut texts = Vec::new();
+    for r in rows {
+        texts.push(r?);
+    }
+    Ok(texts)
+}
+
+pub fn get_meeting_chunk_texts(meeting_id: i64) -> anyhow::Result<Vec<String>> {
+    let conn = connect()?;
+    get_meeting_chunk_texts_on(&conn, meeting_id)
+}
+
 // ---------------------------------------------------------------------------
 // Automatic workspace context index (vault notes + project cards)
 // ---------------------------------------------------------------------------
@@ -2854,7 +3421,7 @@ pub fn upsert_context_doc(
     upsert_context_doc_on(&conn, source, path, name, title, body, fingerprint)
 }
 
-fn upsert_context_doc_on(
+pub fn upsert_context_doc_on(
     conn: &Connection,
     source: &str,
     path: &str,
@@ -3068,7 +3635,7 @@ pub fn search_context_doc_ids(
     search_context_doc_ids_on(&conn, query, source, limit)
 }
 
-fn search_context_doc_ids_on(
+pub fn search_context_doc_ids_on(
     conn: &Connection,
     query: &str,
     source: Option<&str>,
@@ -3126,7 +3693,7 @@ pub fn get_context_docs(ids: &[i64]) -> anyhow::Result<Vec<ContextDoc>> {
     get_context_docs_on(&conn, ids)
 }
 
-fn get_context_docs_on(conn: &Connection, ids: &[i64]) -> anyhow::Result<Vec<ContextDoc>> {
+pub fn get_context_docs_on(conn: &Connection, ids: &[i64]) -> anyhow::Result<Vec<ContextDoc>> {
     let mut docs = Vec::with_capacity(ids.len());
     for id in ids {
         if let Some(doc) = conn
@@ -3339,25 +3906,35 @@ pub fn create_folder(name: &str, color: &str) -> anyhow::Result<Folder> {
     create_folder_on(&conn, name, color)
 }
 
-fn create_folder_on(conn: &Connection, name: &str, color: &str) -> anyhow::Result<Folder> {
+pub fn create_folder_on(conn: &Connection, name: &str, color: &str) -> anyhow::Result<Folder> {
     let now = chrono::Utc::now().to_rfc3339();
+    let uid = new_uid();
     conn.execute(
-        "INSERT INTO folders (name, color, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-        params![name, color, now],
+        "INSERT INTO folders (uid, name, color, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+        params![uid, name, color, now],
     )?;
     let id = conn.last_insert_rowid();
     conn.query_row(
-        "SELECT id, name, color, instructions, created_at, updated_at
+        "SELECT id, uid, name, color, instructions, copilot_mode, created_at, updated_at,
+                  purpose, profile, profile_hash, profile_at, voice_1, voice_2
            FROM folders WHERE id = ?1",
         params![id],
         |row| {
             Ok(Folder {
                 id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                instructions: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                uid: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                instructions: row.get(4)?,
+                copilot_mode: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                purpose: row.get(8)?,
+                profile: row.get(9)?,
+                profile_hash: row.get(10)?,
+                profile_at: row.get(11)?,
+                voice_1: row.get(12)?,
+                voice_2: row.get(13)?,
             })
         },
     )
@@ -3372,22 +3949,33 @@ pub fn list_folders() -> anyhow::Result<Vec<FolderSummary>> {
 
 fn list_folders_on(conn: &Connection) -> anyhow::Result<Vec<FolderSummary>> {
     let mut statement = conn.prepare(
-        "SELECT f.id, f.name, f.color, f.instructions, f.created_at, f.updated_at,
+        "SELECT f.id, f.uid, f.name, f.color, f.instructions, f.copilot_mode, f.created_at, f.updated_at,
+                f.purpose, f.profile, f.profile_hash, f.profile_at, f.voice_1, f.voice_2,
                 (SELECT COUNT(*) FROM meeting_folders mf WHERE mf.folder_id = f.id)
            FROM folders f
           ORDER BY f.updated_at DESC",
     )?;
     let rows = statement.query_map([], |row| {
+        let copilot_mode: String = row.get(5)?;
         Ok(FolderSummary {
             folder: Folder {
                 id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                instructions: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                uid: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                instructions: row.get(4)?,
+                copilot_mode: copilot_mode.clone(),
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                purpose: row.get(8)?,
+                profile: row.get(9)?,
+                profile_hash: row.get(10)?,
+                profile_at: row.get(11)?,
+                voice_1: row.get(12)?,
+                voice_2: row.get(13)?,
             },
-            meeting_count: row.get(6)?,
+            meeting_count: row.get(14)?,
+            copilot_mode,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -3400,19 +3988,94 @@ pub fn get_folder(id: i64) -> anyhow::Result<Option<Folder>> {
     get_folder_on(&conn, id)
 }
 
-fn get_folder_on(conn: &Connection, id: i64) -> anyhow::Result<Option<Folder>> {
+pub fn get_folder_on(conn: &Connection, id: i64) -> anyhow::Result<Option<Folder>> {
     conn.query_row(
-        "SELECT id, name, color, instructions, created_at, updated_at
+        "SELECT id, uid, name, color, instructions, copilot_mode, created_at, updated_at,
+                  purpose, profile, profile_hash, profile_at, voice_1, voice_2
            FROM folders WHERE id = ?1",
         params![id],
         |row| {
             Ok(Folder {
                 id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                instructions: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                uid: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                instructions: row.get(4)?,
+                copilot_mode: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                purpose: row.get(8)?,
+                profile: row.get(9)?,
+                profile_hash: row.get(10)?,
+                profile_at: row.get(11)?,
+                voice_1: row.get(12)?,
+                voice_2: row.get(13)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+/// Load one folder by its stable UID on a caller-supplied connection.
+pub fn get_folder_by_uid_on(conn: &Connection, uid: &str) -> anyhow::Result<Option<Folder>> {
+    conn.query_row(
+        "SELECT id, uid, name, color, instructions, copilot_mode, created_at, updated_at,
+                  purpose, profile, profile_hash, profile_at, voice_1, voice_2
+           FROM folders WHERE uid = ?1",
+        params![uid],
+        |row| {
+            Ok(Folder {
+                id: row.get(0)?,
+                uid: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                instructions: row.get(4)?,
+                copilot_mode: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                purpose: row.get(8)?,
+                profile: row.get(9)?,
+                profile_hash: row.get(10)?,
+                profile_at: row.get(11)?,
+                voice_1: row.get(12)?,
+                voice_2: row.get(13)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+/// Load one folder by its stable UID.
+pub fn get_folder_by_uid(uid: &str) -> anyhow::Result<Option<Folder>> {
+    let conn = connect()?;
+    get_folder_by_uid_on(&conn, uid)
+}
+
+/// Load one folder by its exact name on a caller-supplied connection.
+pub fn get_folder_by_name_on(conn: &Connection, name: &str) -> anyhow::Result<Option<Folder>> {
+    conn.query_row(
+        "SELECT id, uid, name, color, instructions, copilot_mode, created_at, updated_at,
+                  purpose, profile, profile_hash, profile_at, voice_1, voice_2
+           FROM folders WHERE name = ?1",
+        params![name],
+        |row| {
+            Ok(Folder {
+                id: row.get(0)?,
+                uid: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                instructions: row.get(4)?,
+                copilot_mode: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                purpose: row.get(8)?,
+                profile: row.get(9)?,
+                profile_hash: row.get(10)?,
+                profile_at: row.get(11)?,
+                voice_1: row.get(12)?,
+                voice_2: row.get(13)?,
             })
         },
     )
@@ -3454,6 +4117,967 @@ fn set_folder_instructions_on(
     Ok(())
 }
 
+/// Update the default copilot mode for a folder.
+pub fn set_folder_copilot_mode(id: i64, mode: &str) -> anyhow::Result<()> {
+    let conn = connect()?;
+    set_folder_copilot_mode_on(&conn, id, mode)
+}
+
+/// [`set_folder_copilot_mode`] on a caller-supplied connection.
+pub fn set_folder_copilot_mode_on(conn: &Connection, id: i64, mode: &str) -> anyhow::Result<()> {
+    let updated = conn.execute(
+        "UPDATE folders SET copilot_mode = ?1, updated_at = ?2 WHERE id = ?3",
+        params![mode, chrono::Utc::now().to_rfc3339(), id],
+    )?;
+    anyhow::ensure!(updated == 1, "Folder not found: {id}");
+    Ok(())
+}
+
+// Explicit, per-folder evidence sources and their local text index.
+pub fn list_folder_sources_on(
+    conn: &Connection,
+    folder_id: i64,
+) -> anyhow::Result<Vec<FolderSource>> {
+    anyhow::ensure!(
+        get_folder_on(conn, folder_id)?.is_some(),
+        "Folder not found"
+    );
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.folder_id, s.path, s.kind, s.added_at,
+                (SELECT COUNT(*) FROM folder_docs d WHERE d.folder_id = s.folder_id
+                  AND (d.path = s.path OR substr(d.path, 1, length(s.path) + 1) = s.path || '/'))
+           FROM folder_sources s WHERE s.folder_id = ?1 ORDER BY s.id",
+    )?;
+    let rows = stmt.query_map([folder_id], |row| {
+        Ok(FolderSource {
+            id: row.get(0)?,
+            folder_id: row.get(1)?,
+            path: row.get(2)?,
+            kind: row.get(3)?,
+            added_at: row.get(4)?,
+            doc_count: row.get(5)?,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+pub fn insert_folder_source_on(
+    conn: &Connection,
+    folder_id: i64,
+    path: &str,
+    kind: &str,
+    added_at: &str,
+) -> anyhow::Result<FolderSource> {
+    anyhow::ensure!(
+        get_folder_on(conn, folder_id)?.is_some(),
+        "Folder not found"
+    );
+    conn.execute(
+        "INSERT INTO folder_sources (folder_id, path, kind, added_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(folder_id, path) DO NOTHING",
+        params![folder_id, path, kind, added_at],
+    )?;
+    list_folder_sources_on(conn, folder_id)?
+        .into_iter()
+        .find(|source| source.path == path)
+        .ok_or_else(|| anyhow::anyhow!("Folder source not found"))
+}
+
+pub fn delete_folder_source_on(
+    conn: &Connection,
+    source_id: i64,
+) -> anyhow::Result<Option<(i64, String)>> {
+    let tx = conn.unchecked_transaction()?;
+    let source: Option<(i64, String)> = tx
+        .query_row(
+            "SELECT folder_id, path FROM folder_sources WHERE id = ?1",
+            [source_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    if let Some((folder_id, path)) = &source {
+        tx.execute(
+            "DELETE FROM folder_docs WHERE folder_id = ?1 AND
+            (path = ?2 OR substr(path, 1, length(?2) + 1) = ?2 || '/')",
+            params![folder_id, path],
+        )?;
+        tx.execute("DELETE FROM folder_sources WHERE id = ?1", [source_id])?;
+    }
+    tx.commit()?;
+    Ok(source)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn upsert_folder_doc_on(
+    conn: &Connection,
+    folder_id: i64,
+    path: &str,
+    title: &str,
+    body: &str,
+    fingerprint: &str,
+    updated_at: &str,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO folder_docs (folder_id, path, title, body, fingerprint, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(folder_id, path) DO UPDATE SET
+        title = excluded.title, body = excluded.body, fingerprint = excluded.fingerprint,
+        updated_at = excluded.updated_at WHERE folder_docs.fingerprint != excluded.fingerprint",
+        params![folder_id, path, title, body, fingerprint, updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn folder_doc_paths_on(
+    conn: &Connection,
+    folder_id: i64,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let mut stmt =
+        conn.prepare("SELECT path, fingerprint FROM folder_docs WHERE folder_id = ?1 ORDER BY id")?;
+    let rows = stmt.query_map([folder_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+pub fn delete_folder_doc_on(conn: &Connection, folder_id: i64, path: &str) -> anyhow::Result<()> {
+    conn.execute(
+        "DELETE FROM folder_docs WHERE folder_id = ?1 AND path = ?2",
+        params![folder_id, path],
+    )?;
+    Ok(())
+}
+
+pub fn search_folder_doc_ids_on(
+    conn: &Connection,
+    folder_id: i64,
+    fts_query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<i64>> {
+    let match_expr = fts_match_expression(fts_query);
+    if match_expr.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare("SELECT d.id FROM folder_fts f JOIN folder_docs d ON d.id = f.rowid
+        WHERE folder_fts MATCH ?1 AND d.folder_id = ?2 ORDER BY bm25(folder_fts, 10.0, 1.0) LIMIT ?3")?;
+    let rows = stmt.query_map(params![match_expr, folder_id, limit as i64], |row| {
+        row.get(0)
+    })?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+pub fn get_folder_docs_on(
+    conn: &Connection,
+    ids: &[i64],
+) -> anyhow::Result<Vec<(i64, String, String, String)>> {
+    let mut stmt = conn.prepare("SELECT id, path, title, body FROM folder_docs WHERE id = ?1")?;
+    let mut docs = Vec::new();
+    for id in ids {
+        if let Some(doc) = stmt
+            .query_row([id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .optional()?
+        {
+            docs.push(doc);
+        }
+    }
+    Ok(docs)
+}
+
+pub fn folder_source_paths_on(
+    conn: &Connection,
+    folder_id: i64,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let mut stmt =
+        conn.prepare("SELECT path, kind FROM folder_sources WHERE folder_id = ?1 ORDER BY id")?;
+    let rows = stmt.query_map([folder_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+pub fn set_folder_copilot_fields_on(
+    conn: &Connection,
+    folder_id: i64,
+    purpose: &str,
+    voice_1: &str,
+    voice_2: &str,
+) -> anyhow::Result<()> {
+    let purpose: String = purpose.trim().chars().take(300).collect();
+    let voice_1: String = voice_1.trim().chars().take(600).collect();
+    let voice_2: String = voice_2.trim().chars().take(600).collect();
+    let changed = conn.execute("UPDATE folders SET purpose = ?2, voice_1 = ?3, voice_2 = ?4, updated_at = ?5 WHERE id = ?1",
+        params![folder_id, purpose, voice_1, voice_2, chrono::Utc::now().to_rfc3339()])?;
+    anyhow::ensure!(changed == 1, "Folder not found");
+    Ok(())
+}
+
+pub fn set_folder_profile_on(
+    conn: &Connection,
+    folder_id: i64,
+    profile: &str,
+    hash: &str,
+    at: &str,
+) -> anyhow::Result<()> {
+    let changed = conn.execute(
+        "UPDATE folders SET profile = ?2, profile_hash = ?3, profile_at = ?4 WHERE id = ?1",
+        params![folder_id, profile, hash, at],
+    )?;
+    anyhow::ensure!(changed == 1, "Folder not found");
+    Ok(())
+}
+
+pub fn set_folder_profile_manual_on(
+    conn: &Connection,
+    folder_id: i64,
+    profile: &str,
+) -> anyhow::Result<()> {
+    let profile = profile.trim();
+    anyhow::ensure!(
+        profile.chars().count() <= 1_200,
+        "Profile exceeds 1200 characters"
+    );
+    set_folder_profile_on(
+        conn,
+        folder_id,
+        profile,
+        "manual",
+        &chrono::Utc::now().to_rfc3339(),
+    )
+}
+
+pub fn folder_meeting_ids_on(
+    conn: &Connection,
+    folder_id: i64,
+) -> anyhow::Result<std::collections::HashSet<i64>> {
+    let mut stmt = conn.prepare("SELECT meeting_id FROM meeting_folders WHERE folder_id = ?1")?;
+    let rows = stmt.query_map([folder_id], |row| row.get(0))?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+pub fn list_folder_sources(folder_id: i64) -> anyhow::Result<Vec<FolderSource>> {
+    let conn = connect()?;
+    list_folder_sources_on(&conn, folder_id)
+}
+
+pub fn insert_folder_source(
+    folder_id: i64,
+    path: &str,
+    kind: &str,
+    added_at: &str,
+) -> anyhow::Result<FolderSource> {
+    let conn = connect()?;
+    insert_folder_source_on(&conn, folder_id, path, kind, added_at)
+}
+
+pub fn delete_folder_source(source_id: i64) -> anyhow::Result<Option<(i64, String)>> {
+    let conn = connect()?;
+    delete_folder_source_on(&conn, source_id)
+}
+
+pub fn upsert_folder_doc(
+    folder_id: i64,
+    path: &str,
+    title: &str,
+    body: &str,
+    fingerprint: &str,
+    updated_at: &str,
+) -> anyhow::Result<()> {
+    let conn = connect()?;
+    upsert_folder_doc_on(&conn, folder_id, path, title, body, fingerprint, updated_at)
+}
+
+pub fn folder_doc_paths(folder_id: i64) -> anyhow::Result<Vec<(String, String)>> {
+    let conn = connect()?;
+    folder_doc_paths_on(&conn, folder_id)
+}
+
+pub fn delete_folder_doc(folder_id: i64, path: &str) -> anyhow::Result<()> {
+    let conn = connect()?;
+    delete_folder_doc_on(&conn, folder_id, path)
+}
+
+pub fn search_folder_doc_ids(
+    folder_id: i64,
+    fts_query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<i64>> {
+    let conn = connect()?;
+    search_folder_doc_ids_on(&conn, folder_id, fts_query, limit)
+}
+
+pub fn get_folder_docs(ids: &[i64]) -> anyhow::Result<Vec<(i64, String, String, String)>> {
+    let conn = connect()?;
+    get_folder_docs_on(&conn, ids)
+}
+
+pub fn folder_source_paths(folder_id: i64) -> anyhow::Result<Vec<(String, String)>> {
+    let conn = connect()?;
+    folder_source_paths_on(&conn, folder_id)
+}
+
+pub fn set_folder_copilot_fields(
+    folder_id: i64,
+    purpose: &str,
+    voice_1: &str,
+    voice_2: &str,
+) -> anyhow::Result<()> {
+    let conn = connect()?;
+    set_folder_copilot_fields_on(&conn, folder_id, purpose, voice_1, voice_2)
+}
+
+pub fn set_folder_profile(
+    folder_id: i64,
+    profile: &str,
+    hash: &str,
+    at: &str,
+) -> anyhow::Result<()> {
+    let conn = connect()?;
+    set_folder_profile_on(&conn, folder_id, profile, hash, at)
+}
+
+pub fn set_folder_profile_manual(folder_id: i64, profile: &str) -> anyhow::Result<()> {
+    let conn = connect()?;
+    set_folder_profile_manual_on(&conn, folder_id, profile)
+}
+
+/// Build the deterministic same-folder context shown while a meeting is live.
+pub fn get_folder_copilot_brief(folder_id: i64) -> anyhow::Result<Option<FolderCopilotBrief>> {
+    let conn = connect()?;
+    get_folder_copilot_brief_on(&conn, folder_id)
+}
+
+/// [`get_folder_copilot_brief`] on a caller-supplied connection.
+pub fn get_folder_copilot_brief_on(
+    conn: &Connection,
+    folder_id: i64,
+) -> anyhow::Result<Option<FolderCopilotBrief>> {
+    let Some(folder) = get_folder_on(conn, folder_id)? else {
+        return Ok(None);
+    };
+    let meetings = get_meetings_for_folder_on(conn, folder_id)?;
+    let meeting_count = meetings.len() as i64;
+
+    let mut open_items = Vec::new();
+    for (meeting_index, meeting) in meetings.iter().enumerate() {
+        for item in get_action_items_on(conn, Some(meeting.id))?
+            .into_iter()
+            .filter(|item| !item.done)
+        {
+            open_items.push(BriefOpenItem {
+                id: item.id,
+                meeting_id: meeting.id,
+                meeting_title: meeting.title.clone(),
+                recorded_at: meeting.recorded_at.clone(),
+                ord: item.ord,
+                text: item.text,
+                assignee: item.assignee,
+                due: item.due,
+                meetings_ago: meeting_index as i64,
+            });
+            if open_items.len() == 20 {
+                break;
+            }
+        }
+        if open_items.len() == 20 {
+            break;
+        }
+    }
+
+    let last_meeting = meetings.first();
+    let decision_re = regex::Regex::new(r"(?i)(decision|agreement|قرار|الاتفاق|الاتفاقيات)").unwrap();
+    let follow_up_re = regex::Regex::new(r"(?i)(follow.?up|متابعة|المتابعة)").unwrap();
+    let decisions = last_meeting
+        .map(|meeting| {
+            summary_section_bullets(&meeting.summary, &decision_re)
+                .into_iter()
+                .take(8)
+                .map(|text| BriefBullet {
+                    meeting_id: meeting.id,
+                    text,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let follow_ups = last_meeting
+        .map(|meeting| {
+            summary_section_bullets(&meeting.summary, &follow_up_re)
+                .into_iter()
+                .take(8)
+                .map(|text| BriefBullet {
+                    meeting_id: meeting.id,
+                    text,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let last_meeting = last_meeting.map(|meeting| BriefMeetingRef {
+        id: meeting.id,
+        title: meeting.title.clone(),
+        recorded_at: meeting.recorded_at.clone(),
+        attendees: meeting.attendees.clone(),
+    });
+
+    Ok(Some(FolderCopilotBrief {
+        folder_id: folder.id,
+        folder_name: folder.name,
+        copilot_mode: folder.copilot_mode,
+        copilot_web: folder_copilot_web(conn, folder_id)?,
+        meeting_count,
+        last_meeting,
+        open_items,
+        decisions,
+        follow_ups,
+    }))
+}
+
+/// Read the default copilot mode for a folder from a caller-supplied connection.
+pub fn folder_copilot_mode(conn: &Connection, folder_id: i64) -> anyhow::Result<Option<String>> {
+    let mut stmt = conn.prepare_cached("SELECT copilot_mode FROM folders WHERE id = ?1")?;
+    let mut rows = stmt.query(params![folder_id])?;
+    if let Some(row) = rows.next()? {
+        let mode: String = row.get(0)?;
+        Ok(Some(mode))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Insert a new copilot card record when starting an answer generation stream.
+#[allow(clippy::too_many_arguments)]
+pub fn insert_copilot_card(
+    epoch: u64,
+    card_id: u64,
+    folder_id: Option<i64>,
+    provider: &str,
+    question: &str,
+    passages_json: &str,
+    egress_chars: usize,
+    at: &str,
+) -> anyhow::Result<i64> {
+    let conn = connect()?;
+    insert_copilot_card_on(
+        &conn,
+        epoch,
+        card_id,
+        folder_id,
+        provider,
+        question,
+        passages_json,
+        egress_chars,
+        at,
+    )
+}
+
+/// [`insert_copilot_card`] on a caller-supplied connection.
+#[allow(clippy::too_many_arguments)]
+pub fn insert_copilot_card_on(
+    conn: &Connection,
+    epoch: u64,
+    card_id: u64,
+    folder_id: Option<i64>,
+    provider: &str,
+    question: &str,
+    passages_json: &str,
+    egress_chars: usize,
+    at: &str,
+) -> anyhow::Result<i64> {
+    conn.execute(
+        "INSERT INTO copilot_cards (
+            epoch, card_id, folder_id, meeting_id, provider, question,
+            passages_json, answer_md, provenance_json, egress_chars, web_used, cancelled, at
+        ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, NULL, NULL, ?7, 0, 0, ?8)",
+        params![
+            epoch as i64,
+            card_id as i64,
+            folder_id,
+            provider,
+            question,
+            passages_json,
+            egress_chars as i64,
+            at,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Update a copilot card row upon completion or error.
+pub fn finish_copilot_card(
+    row_id: i64,
+    answer_md: Option<&str>,
+    provenance_json: Option<&str>,
+    web_used: bool,
+    cancelled: bool,
+) -> anyhow::Result<()> {
+    let conn = connect()?;
+    finish_copilot_card_on(
+        &conn,
+        row_id,
+        answer_md,
+        provenance_json,
+        web_used,
+        cancelled,
+    )
+}
+
+/// [`finish_copilot_card`] on a caller-supplied connection.
+pub fn finish_copilot_card_on(
+    conn: &Connection,
+    row_id: i64,
+    answer_md: Option<&str>,
+    provenance_json: Option<&str>,
+    web_used: bool,
+    cancelled: bool,
+) -> anyhow::Result<()> {
+    let updated = conn.execute(
+        "UPDATE copilot_cards
+         SET answer_md = ?1,
+             provenance_json = ?2,
+             web_used = ?3,
+             cancelled = ?4
+         WHERE id = ?5",
+        params![
+            answer_md,
+            provenance_json,
+            if web_used { 1 } else { 0 },
+            if cancelled { 1 } else { 0 },
+            row_id,
+        ],
+    )?;
+    anyhow::ensure!(updated == 1, "Copilot card row not found: {row_id}");
+    Ok(())
+}
+
+/// Link all unattached copilot cards for an epoch to the saved meeting.
+pub fn attach_copilot_cards_to_meeting(epoch: u64, meeting_id: i64) -> anyhow::Result<usize> {
+    let conn = connect()?;
+    attach_copilot_cards_to_meeting_on(&conn, epoch, meeting_id)
+}
+
+/// [`attach_copilot_cards_to_meeting`] on a caller-supplied connection.
+pub fn attach_copilot_cards_to_meeting_on(
+    conn: &Connection,
+    epoch: u64,
+    meeting_id: i64,
+) -> anyhow::Result<usize> {
+    let count = conn.execute(
+        "UPDATE copilot_cards SET meeting_id = ?1 WHERE epoch = ?2 AND meeting_id IS NULL",
+        params![meeting_id, epoch as i64],
+    )?;
+    Ok(count)
+}
+
+/// Compute the aggregate receipt of copilot activity for a finished meeting.
+pub fn copilot_receipt(meeting_id: i64) -> anyhow::Result<CopilotReceipt> {
+    let conn = connect()?;
+    copilot_receipt_on(&conn, meeting_id)
+}
+
+/// [`copilot_receipt`] on a caller-supplied connection.
+pub fn copilot_receipt_on(conn: &Connection, meeting_id: i64) -> anyhow::Result<CopilotReceipt> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT
+            COUNT(*),
+            COALESCE(SUM(json_array_length(passages_json)), 0),
+            COALESCE(SUM(CASE WHEN provider = 'claude' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN provider = 'deepseek' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN provider = 'local' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(web_used), 0)
+         FROM copilot_cards
+         WHERE meeting_id = ?1 AND cancelled = 0",
+    )?;
+    let receipt = stmt.query_row(params![meeting_id], |row| {
+        let questions: i64 = row.get(0)?;
+        let passages: i64 = row.get(1)?;
+        let claude_questions: i64 = row.get(2)?;
+        let deepseek_questions: i64 = row.get(3)?;
+        let local_questions: i64 = row.get(4)?;
+        let web_searches: i64 = row.get(5)?;
+        Ok(CopilotReceipt {
+            questions: questions.max(0) as u32,
+            passages: passages.max(0) as u32,
+            claude_questions: claude_questions.max(0) as u32,
+            deepseek_questions: deepseek_questions.max(0) as u32,
+            local_questions: local_questions.max(0) as u32,
+            web_requested: web_searches.max(0) as u32,
+            web_performed: web_searches.max(0) as u32,
+        })
+    })?;
+    Ok(receipt)
+}
+
+/// Get folder web consent setting.
+pub fn folder_copilot_web(conn: &Connection, folder_id: i64) -> anyhow::Result<bool> {
+    let mut stmt = conn.prepare_cached("SELECT copilot_web FROM folders WHERE id = ?1")?;
+    let val: Option<i64> = stmt
+        .query_row(params![folder_id], |row| row.get(0))
+        .optional()?
+        .flatten();
+    Ok(val.unwrap_or(0) != 0)
+}
+
+/// Set folder web consent.
+pub fn set_folder_copilot_web(folder_id: i64, enabled: bool) -> anyhow::Result<()> {
+    let conn = connect()?;
+    set_folder_copilot_web_on(&conn, folder_id, enabled)
+}
+
+pub fn set_folder_copilot_web_on(
+    conn: &Connection,
+    folder_id: i64,
+    enabled: bool,
+) -> anyhow::Result<()> {
+    let updated = conn.execute(
+        "UPDATE folders SET copilot_web = ?1 WHERE id = ?2",
+        params![if enabled { 1 } else { 0 }, folder_id],
+    )?;
+    anyhow::ensure!(updated == 1, "Folder not found: {folder_id}");
+    Ok(())
+}
+
+/// Insert a copilot session record.
+pub fn insert_copilot_session(
+    session_id: &str,
+    folder_id: Option<i64>,
+    mode_at_start: &str,
+    started_at: &str,
+) -> anyhow::Result<()> {
+    let conn = connect()?;
+    insert_copilot_session_on(&conn, session_id, folder_id, mode_at_start, started_at)
+}
+
+pub fn insert_copilot_session_on(
+    conn: &Connection,
+    session_id: &str,
+    folder_id: Option<i64>,
+    mode_at_start: &str,
+    started_at: &str,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO copilot_sessions (session_id, folder_id, mode_at_start, started_at) VALUES (?1, ?2, ?3, ?4)",
+        params![session_id, folder_id, mode_at_start, started_at],
+    )?;
+    Ok(())
+}
+
+/// Insert a v2 copilot card at 'heard' status.
+#[allow(clippy::too_many_arguments)]
+pub fn insert_copilot_card_v2(
+    session_id: &str,
+    card_id: u64,
+    folder_id: Option<i64>,
+    provider_frozen: &str,
+    trigger: &str,
+    retry_of: Option<u64>,
+    question: &str,
+    at: &str,
+) -> anyhow::Result<i64> {
+    let conn = connect()?;
+    insert_copilot_card_v2_on(
+        &conn,
+        session_id,
+        card_id,
+        folder_id,
+        provider_frozen,
+        trigger,
+        retry_of,
+        question,
+        at,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn insert_copilot_card_v2_on(
+    conn: &Connection,
+    session_id: &str,
+    card_id: u64,
+    folder_id: Option<i64>,
+    provider_frozen: &str,
+    trigger: &str,
+    retry_of: Option<u64>,
+    question: &str,
+    at: &str,
+) -> anyhow::Result<i64> {
+    insert_copilot_card_resolved_on(
+        conn,
+        session_id,
+        card_id,
+        folder_id,
+        provider_frozen,
+        trigger,
+        retry_of,
+        question,
+        None,
+        at,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn insert_copilot_card_resolved_on(
+    conn: &Connection,
+    session_id: &str,
+    card_id: u64,
+    folder_id: Option<i64>,
+    provider_frozen: &str,
+    trigger: &str,
+    retry_of: Option<u64>,
+    question: &str,
+    resolved_question: Option<&str>,
+    at: &str,
+) -> anyhow::Result<i64> {
+    conn.execute(
+        "INSERT INTO copilot_cards (
+            epoch, card_id, folder_id, session_id,
+            provider, provider_frozen, \"trigger\", retry_of,
+            question, passages_json, status, at, resolved_question,
+            dispatched, egress_bytes, web_requested, web_performed
+        ) VALUES (
+            0, ?1, ?2, ?3,
+            ?4, ?4, ?5, ?6,
+            ?7, '[]', 'heard', ?8, ?9,
+            0, 0, 0, 0
+        )",
+        params![
+            card_id,
+            folder_id,
+            session_id,
+            provider_frozen,
+            trigger,
+            retry_of.map(|id| id as i64),
+            question,
+            at,
+            resolved_question
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Mark provider dispatch immediately before the HTTP request is sent.
+pub fn mark_copilot_card_dispatched(row_id: i64) -> anyhow::Result<()> {
+    let conn = connect()?;
+    mark_copilot_card_dispatched_on(&conn, row_id)
+}
+
+pub fn mark_copilot_card_dispatched_on(conn: &Connection, row_id: i64) -> anyhow::Result<()> {
+    let updated = conn.execute(
+        "UPDATE copilot_cards SET dispatched = 1 WHERE id = ?1 AND status = 'heard'",
+        params![row_id],
+    )?;
+    anyhow::ensure!(updated == 1, "Copilot card is already terminal: {row_id}");
+    Ok(())
+}
+
+pub struct CopilotTerminalUpdate<'a> {
+    pub status: &'a str,
+    pub reason: Option<&'a str>,
+    pub passages_json: &'a str,
+    pub answer_md: Option<&'a str>,
+    pub provenance_json: Option<&'a str>,
+    pub error: Option<&'a str>,
+    pub egress_bytes: i64,
+    pub web_requested: bool,
+    pub web_performed: u64,
+    pub dispatched: bool,
+    pub finished_at: &'a str,
+}
+
+/// Apply the sole terminal write for a heard card.
+pub fn finish_copilot_card_v2(
+    conn: &Connection,
+    row_id: i64,
+    update: &CopilotTerminalUpdate<'_>,
+) -> anyhow::Result<()> {
+    let updated = conn.execute(
+        "UPDATE copilot_cards SET
+            status = ?1,
+            reason = ?2,
+            passages_json = ?3,
+            answer_md = ?4,
+            provenance_json = ?5,
+            error = ?6,
+            egress_bytes = ?7,
+            web_requested = ?8,
+            web_performed = ?9,
+            dispatched = ?10,
+            finished_at = ?11,
+            meeting_id = COALESCE(
+                meeting_id,
+                (SELECT meeting_id FROM copilot_sessions
+                  WHERE session_id = copilot_cards.session_id)
+            )
+        WHERE id = ?12 AND status = 'heard'",
+        params![
+            update.status,
+            update.reason,
+            update.passages_json,
+            update.answer_md,
+            update.provenance_json,
+            update.error,
+            update.egress_bytes,
+            update.web_requested as i64,
+            i64::try_from(update.web_performed).unwrap_or(i64::MAX),
+            update.dispatched as i64,
+            update.finished_at,
+            row_id,
+        ],
+    )?;
+    anyhow::ensure!(updated == 1, "Copilot card is already terminal: {row_id}");
+    Ok(())
+}
+
+pub fn finish_copilot_card_v2_connected(
+    row_id: i64,
+    update: &CopilotTerminalUpdate<'_>,
+) -> anyhow::Result<()> {
+    let conn = connect()?;
+    finish_copilot_card_v2(&conn, row_id, update)
+}
+
+/// Attach v2 copilot cards by session_id to a meeting.
+pub fn attach_copilot_cards_by_session(session_id: &str, meeting_id: i64) -> anyhow::Result<usize> {
+    let conn = connect()?;
+    attach_copilot_cards_by_session_on(&conn, session_id, meeting_id)
+}
+
+pub fn attach_copilot_cards_by_session_on(
+    conn: &Connection,
+    session_id: &str,
+    meeting_id: i64,
+) -> anyhow::Result<usize> {
+    let transaction = conn.unchecked_transaction()?;
+    let updated = attach_copilot_session_in_transaction(&transaction, session_id, meeting_id)?;
+    transaction.commit()?;
+    Ok(updated)
+}
+
+fn attach_copilot_session_in_transaction(
+    conn: &Connection,
+    session_id: &str,
+    meeting_id: i64,
+) -> anyhow::Result<usize> {
+    // The conditional write both acquires SQLite's writer lock and makes the
+    // mapping compare-and-set: NULL -> meeting, or an idempotent same meeting.
+    let mapped = conn.execute(
+        "UPDATE copilot_sessions
+            SET meeting_id = ?1
+          WHERE session_id = ?2
+            AND (meeting_id IS NULL OR meeting_id = ?1)",
+        params![meeting_id, session_id],
+    )?;
+    if mapped != 1 {
+        let existing: Option<Option<i64>> = conn
+            .query_row(
+                "SELECT meeting_id FROM copilot_sessions WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match existing {
+            None => anyhow::bail!("Copilot session not found: {session_id}"),
+            Some(Some(existing_id)) => anyhow::bail!(
+                "Copilot session {session_id} is already attached to meeting {existing_id}"
+            ),
+            Some(None) => anyhow::bail!("Could not attach Copilot session: {session_id}"),
+        }
+    }
+
+    let conflicting_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM copilot_cards
+          WHERE session_id = ?1
+            AND meeting_id IS NOT NULL
+            AND meeting_id != ?2",
+        params![session_id, meeting_id],
+        |row| row.get(0),
+    )?;
+    anyhow::ensure!(
+        conflicting_cards == 0,
+        "Copilot session {session_id} has cards attached to another meeting"
+    );
+
+    conn.execute(
+        "UPDATE copilot_cards SET meeting_id = ?1
+          WHERE session_id = ?2 AND meeting_id IS NULL",
+        params![meeting_id, session_id],
+    )
+    .map_err(Into::into)
+}
+
+/// Map a session to a meeting in copilot_sessions.
+pub fn map_copilot_session_to_meeting(session_id: &str, meeting_id: i64) -> anyhow::Result<()> {
+    let conn = connect()?;
+    map_copilot_session_to_meeting_on(&conn, session_id, meeting_id)
+}
+
+pub fn map_copilot_session_to_meeting_on(
+    conn: &Connection,
+    session_id: &str,
+    meeting_id: i64,
+) -> anyhow::Result<()> {
+    let transaction = conn.unchecked_transaction()?;
+    attach_copilot_session_in_transaction(&transaction, session_id, meeting_id)?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Get the meeting_id for a session from copilot_sessions.
+pub fn copilot_session_meeting_id(
+    conn: &Connection,
+    session_id: &str,
+) -> anyhow::Result<Option<i64>> {
+    let mut stmt =
+        conn.prepare_cached("SELECT meeting_id FROM copilot_sessions WHERE session_id = ?1")?;
+    let meeting_id: Option<i64> = stmt
+        .query_row(params![session_id], |row| row.get(0))
+        .optional()?
+        .flatten();
+    Ok(meeting_id)
+}
+
+/// V2 receipt: questions = done|error with provider != no_ai; cloud/local
+/// provider counts require a recorded dispatch; web_requested/web_performed are separate.
+pub fn copilot_receipt_v2(meeting_id: i64) -> anyhow::Result<crate::types::CopilotReceipt> {
+    let conn = connect()?;
+    copilot_receipt_v2_on(&conn, meeting_id)
+}
+
+pub fn copilot_receipt_v2_on(
+    conn: &Connection,
+    meeting_id: i64,
+) -> anyhow::Result<crate::types::CopilotReceipt> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT
+            COALESCE(SUM(CASE
+                WHEN status IN ('done', 'error') AND provider_frozen != 'no_ai' THEN 1
+                ELSE 0 END), 0),
+            COALESCE(SUM(CASE
+                WHEN status IN ('done', 'error') AND provider_frozen != 'no_ai'
+                THEN json_array_length(passages_json) ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN dispatched = 1 AND provider_frozen = 'claude' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN dispatched = 1 AND provider_frozen = 'deepseek' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN dispatched = 1 AND provider_frozen = 'local' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN web_requested = 1 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN web_performed > 0 THEN web_performed ELSE 0 END), 0)
+         FROM copilot_cards
+         WHERE meeting_id = ?1",
+    )?;
+    let receipt = stmt.query_row(params![meeting_id], |row| {
+        let questions: i64 = row.get(0)?;
+        let passages: i64 = row.get(1)?;
+        let claude_questions: i64 = row.get(2)?;
+        let deepseek_questions: i64 = row.get(3)?;
+        let local_questions: i64 = row.get(4)?;
+        let web_requested: i64 = row.get(5)?;
+        let web_performed: i64 = row.get(6)?;
+
+        Ok(CopilotReceipt {
+            questions: questions.max(0) as u32,
+            passages: passages.max(0) as u32,
+            claude_questions: claude_questions.max(0) as u32,
+            deepseek_questions: deepseek_questions.max(0) as u32,
+            local_questions: local_questions.max(0) as u32,
+            web_requested: web_requested.max(0) as u32,
+            web_performed: web_performed.max(0) as u32,
+        })
+    })?;
+    Ok(receipt)
+}
+
 /// Update the sidebar color for a folder.
 pub fn set_folder_color(id: i64, color: &str) -> anyhow::Result<()> {
     let conn = connect()?;
@@ -3484,6 +5108,8 @@ fn delete_folder_on(conn: &Connection, id: i64) -> anyhow::Result<()> {
         "DELETE FROM folder_overviews WHERE folder_id = ?1",
         params![id],
     )?;
+    conn.execute("DELETE FROM folder_sources WHERE folder_id = ?1", [id])?;
+    conn.execute("DELETE FROM folder_docs WHERE folder_id = ?1", [id])?;
     let updated = conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
     anyhow::ensure!(updated == 1, "Folder not found: {id}");
     Ok(())
@@ -3495,7 +5121,7 @@ pub fn set_meeting_folder(meeting_id: i64, folder_id: Option<i64>) -> anyhow::Re
     set_meeting_folder_on(&conn, meeting_id, folder_id)
 }
 
-fn set_meeting_folder_on(
+pub fn set_meeting_folder_on(
     conn: &Connection,
     meeting_id: i64,
     folder_id: Option<i64>,
@@ -3576,6 +5202,232 @@ pub fn folder_meeting_ids() -> anyhow::Result<Vec<(i64, i64)>> {
     let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(Into::into)
+}
+
+#[cfg(test)]
+mod folder_copilot_tests {
+    use super::*;
+
+    fn add_filed_meeting(
+        conn: &Connection,
+        folder_id: i64,
+        title: &str,
+        recorded_at: &str,
+        summary: &str,
+        attendees: &[&str],
+    ) -> i64 {
+        let meeting = Meeting {
+            id: 0,
+            uid: String::new(),
+            title: title.to_string(),
+            recorded_at: recorded_at.to_string(),
+            duration_seconds: 600.0,
+            transcript: String::new(),
+            summary: summary.to_string(),
+            template_used: String::new(),
+            audio_file_path: None,
+            attendees: attendees
+                .iter()
+                .map(|attendee| attendee.to_string())
+                .collect(),
+            user_notes: String::new(),
+            link: String::new(),
+            tags: Vec::new(),
+            pinned: false,
+            locked: false,
+            archived: false,
+            transcript_turns: Vec::new(),
+        };
+        let meeting_id = insert_meeting_on(conn, &meeting).unwrap();
+        set_meeting_folder_on(conn, meeting_id, Some(folder_id)).unwrap();
+        sync_action_items(conn, meeting_id, summary).unwrap();
+        meeting_id
+    }
+
+    #[test]
+    fn folder_copilot_mode_defaults_and_updates() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Daily stand-up", "blue").unwrap();
+        assert_eq!(folder.copilot_mode, "no_ai");
+        assert_eq!(
+            get_folder_on(&conn, folder.id)
+                .unwrap()
+                .unwrap()
+                .copilot_mode,
+            "no_ai"
+        );
+        assert_eq!(list_folders_on(&conn).unwrap()[0].copilot_mode, "no_ai");
+
+        set_folder_copilot_mode_on(&conn, folder.id, "claude").unwrap();
+
+        assert_eq!(
+            get_folder_on(&conn, folder.id)
+                .unwrap()
+                .unwrap()
+                .copilot_mode,
+            "claude"
+        );
+        let listed = list_folders_on(&conn).unwrap();
+        assert_eq!(listed[0].copilot_mode, "claude");
+        assert_eq!(listed[0].folder.copilot_mode, "claude");
+    }
+
+    #[test]
+    fn folder_brief_collects_open_items_newest_first_with_meetings_ago() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Daily stand-up", "blue").unwrap();
+        let oldest_id = add_filed_meeting(
+            &conn,
+            folder.id,
+            "Stand-up July 1",
+            "2026-07-01T09:00:00Z",
+            "**Action Items**\n- Ava: Prepare deck — due 2026-07-10\n- Book the room",
+            &["Ava", "Sam"],
+        );
+        let middle_id = add_filed_meeting(
+            &conn,
+            folder.id,
+            "Stand-up July 2",
+            "2026-07-02T09:00:00Z",
+            "**Action Items**\n- Review metrics",
+            &["Sam"],
+        );
+        let newest_id = add_filed_meeting(
+            &conn,
+            folder.id,
+            "Stand-up July 3",
+            "2026-07-03T09:00:00Z",
+            "**Action Items**\n- Noor: Ship build — due 2026-07-04\n- Send recap",
+            &["Noor", "Sam"],
+        );
+        let newest_items = get_action_items_on(&conn, Some(newest_id)).unwrap();
+        conn.execute(
+            "UPDATE action_items SET done = 1, status = 'done' WHERE id = ?1",
+            params![newest_items[1].id],
+        )
+        .unwrap();
+
+        let brief = get_folder_copilot_brief_on(&conn, folder.id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(brief.meeting_count, 3);
+        assert_eq!(brief.last_meeting.as_ref().unwrap().id, newest_id);
+        assert_eq!(
+            brief.last_meeting.as_ref().unwrap().attendees,
+            ["Noor", "Sam"]
+        );
+        assert_eq!(brief.open_items.len(), 4);
+        assert_eq!(brief.open_items[0].meeting_id, newest_id);
+        assert_eq!(brief.open_items[0].meetings_ago, 0);
+        assert_eq!(brief.open_items[0].assignee, "Noor");
+        assert_eq!(brief.open_items[0].due, "2026-07-04");
+        assert_eq!(brief.open_items[1].meeting_id, middle_id);
+        assert_eq!(brief.open_items[1].meetings_ago, 1);
+        assert_eq!(brief.open_items[2].meeting_id, oldest_id);
+        assert_eq!(brief.open_items[2].meetings_ago, 2);
+        assert_eq!(brief.open_items[3].meeting_id, oldest_id);
+        assert_eq!(brief.open_items[3].meetings_ago, 2);
+    }
+
+    #[test]
+    fn folder_brief_extracts_decisions_and_follow_ups_from_last_meeting_only() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Daily stand-up", "blue").unwrap();
+        add_filed_meeting(
+            &conn,
+            folder.id,
+            "Older",
+            "2026-07-01T09:00:00Z",
+            "**Decisions**\n- Old decision\n**Follow-ups**\n- None mentioned",
+            &[],
+        );
+        let newest_id = add_filed_meeting(
+            &conn,
+            folder.id,
+            "Newest",
+            "2026-07-02T09:00:00Z",
+            "**Decisions**\n- Ship version one\n- Freeze the API\n**Follow-ups**\n- Email the customer",
+            &[],
+        );
+
+        let brief = get_folder_copilot_brief_on(&conn, folder.id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            brief.decisions,
+            vec![
+                BriefBullet {
+                    meeting_id: newest_id,
+                    text: "Ship version one".to_string(),
+                },
+                BriefBullet {
+                    meeting_id: newest_id,
+                    text: "Freeze the API".to_string(),
+                },
+            ]
+        );
+        assert_eq!(
+            brief.follow_ups,
+            vec![BriefBullet {
+                meeting_id: newest_id,
+                text: "Email the customer".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn folder_brief_caps_and_placeholders() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Daily stand-up", "blue").unwrap();
+        let item_bullets = (0..25)
+            .map(|index| format!("- Item {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let summary = format!("**Action Items**\n{item_bullets}\n**Decisions**\n- None mentioned");
+        add_filed_meeting(
+            &conn,
+            folder.id,
+            "Many actions",
+            "2026-07-03T09:00:00Z",
+            &summary,
+            &[],
+        );
+
+        let brief = get_folder_copilot_brief_on(&conn, folder.id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(brief.open_items.len(), 20);
+        assert_eq!(brief.open_items[0].text, "Item 0");
+        assert_eq!(brief.open_items[19].text, "Item 19");
+        assert!(brief.decisions.is_empty());
+    }
+
+    #[test]
+    fn folder_brief_for_missing_folder_is_none() {
+        let conn = in_memory_db();
+        assert!(get_folder_copilot_brief_on(&conn, 404).unwrap().is_none());
+    }
+
+    #[test]
+    fn folder_brief_for_empty_folder_has_no_last_meeting() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Empty", "purple").unwrap();
+        set_folder_copilot_web_on(&conn, folder.id, true).unwrap();
+
+        let brief = get_folder_copilot_brief_on(&conn, folder.id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(brief.meeting_count, 0);
+        assert!(brief.copilot_web);
+        assert!(brief.last_meeting.is_none());
+        assert!(brief.open_items.is_empty());
+        assert!(brief.decisions.is_empty());
+        assert!(brief.follow_ups.is_empty());
+    }
 }
 
 /// Load the cached overview for one folder.
@@ -7864,5 +9716,792 @@ mod context_index_storage_tests {
         assert!(search_context_doc_ids_on(&conn, "MIQ", None, 10)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn copilot_v2_partial_migration_is_independently_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE folders (id INTEGER PRIMARY KEY);
+             CREATE TABLE copilot_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                epoch INTEGER NOT NULL,
+                session_id TEXT NOT NULL DEFAULT '',
+                card_id INTEGER NOT NULL,
+                folder_id INTEGER,
+                meeting_id INTEGER,
+                provider TEXT NOT NULL,
+                question TEXT NOT NULL,
+                passages_json TEXT NOT NULL,
+                answer_md TEXT,
+                provenance_json TEXT,
+                egress_chars INTEGER NOT NULL DEFAULT 0,
+                web_used INTEGER NOT NULL DEFAULT 0,
+                cancelled INTEGER NOT NULL DEFAULT 0,
+                at TEXT NOT NULL
+             );
+             INSERT INTO copilot_cards
+                (epoch, session_id, card_id, provider, question, passages_json, at)
+             VALUES (44, '', 1, 'local', 'q', '[]', 'now');",
+        )
+        .unwrap();
+
+        create_tables(&conn).unwrap();
+        migrate_copilot_v2(&conn).unwrap();
+        migrate_copilot_v2(&conn).unwrap();
+        for column in [
+            "status",
+            "reason",
+            "trigger",
+            "provider_frozen",
+            "retry_of",
+            "dispatched",
+            "error",
+            "egress_bytes",
+            "web_requested",
+            "web_performed",
+            "finished_at",
+        ] {
+            assert!(column_exists(&conn, "copilot_cards", column).unwrap());
+        }
+        assert!(column_exists(&conn, "folders", "copilot_web").unwrap());
+        let session_id: String = conn
+            .query_row("SELECT session_id FROM copilot_cards", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(session_id, "legacy-epoch-44");
+    }
+
+    fn insert_test_session(conn: &Connection, session_id: &str) {
+        insert_copilot_session_on(conn, session_id, None, "local", "now").unwrap();
+    }
+
+    fn test_meeting(title: &str) -> Meeting {
+        Meeting {
+            id: 0,
+            uid: String::new(),
+            title: title.to_string(),
+            recorded_at: "2026-09-05T12:00:00Z".to_string(),
+            duration_seconds: 30.0,
+            transcript: String::new(),
+            summary: String::new(),
+            template_used: "general".to_string(),
+            audio_file_path: None,
+            attendees: Vec::new(),
+            user_notes: String::new(),
+            link: String::new(),
+            tags: Vec::new(),
+            pinned: false,
+            locked: false,
+            archived: false,
+            transcript_turns: Vec::new(),
+        }
+    }
+
+    fn finish_test_card(
+        conn: &Connection,
+        row_id: i64,
+        status: &str,
+        passages: &str,
+        dispatched: bool,
+        web_search_frozen: bool,
+        web_performed: u64,
+    ) -> anyhow::Result<()> {
+        finish_copilot_card_v2(
+            conn,
+            row_id,
+            &CopilotTerminalUpdate {
+                status,
+                reason: None,
+                passages_json: passages,
+                answer_md: Some("partial or final"),
+                provenance_json: Some("[]"),
+                error: (status == "error").then_some("provider error"),
+                egress_bytes: 123,
+                web_requested: dispatched && web_search_frozen,
+                web_performed,
+                dispatched,
+                finished_at: "later",
+            },
+        )
+    }
+
+    #[test]
+    fn copilot_v2_heard_to_terminal_is_one_guarded_update() {
+        let conn = in_memory_db();
+        insert_test_session(&conn, "heard-terminal");
+        let row_id = insert_copilot_card_v2_on(
+            &conn,
+            "heard-terminal",
+            1,
+            None,
+            "claude",
+            "auto",
+            None,
+            "What changed?",
+            "now",
+        )
+        .unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM copilot_cards WHERE id = ?1",
+                [row_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "heard");
+        mark_copilot_card_dispatched_on(&conn, row_id).unwrap();
+        finish_test_card(
+            &conn,
+            row_id,
+            "done",
+            "[{\"text\":\"final\"}]",
+            true,
+            true,
+            2,
+        )
+        .unwrap();
+        assert!(finish_test_card(&conn, row_id, "error", "[]", true, true, 0).is_err());
+        let row: (String, String, i64, i64, i64) = conn
+            .query_row(
+                "SELECT status, passages_json, dispatched, web_requested, web_performed
+                   FROM copilot_cards WHERE id = ?1",
+                [row_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            ("done".into(), "[{\"text\":\"final\"}]".into(), 1, 1, 2)
+        );
+    }
+
+    #[test]
+    fn copilot_v2_attach_before_and_after_heard_are_session_safe() {
+        let conn = in_memory_db();
+        insert_test_session(&conn, "session-a");
+        insert_test_session(&conn, "session-b");
+        assert_eq!(
+            attach_copilot_cards_by_session_on(&conn, "session-a", 700).unwrap(),
+            0
+        );
+        let row_a = insert_copilot_card_v2_on(
+            &conn,
+            "session-a",
+            1,
+            None,
+            "local",
+            "auto",
+            None,
+            "A?",
+            "now",
+        )
+        .unwrap();
+        let row_b = insert_copilot_card_v2_on(
+            &conn,
+            "session-b",
+            1,
+            None,
+            "local",
+            "auto",
+            None,
+            "B?",
+            "now",
+        )
+        .unwrap();
+        finish_test_card(&conn, row_a, "done", "[]", true, false, 0).unwrap();
+        let meetings: (Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT
+                    (SELECT meeting_id FROM copilot_cards WHERE id = ?1),
+                    (SELECT meeting_id FROM copilot_cards WHERE id = ?2)",
+                params![row_a, row_b],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(meetings, (Some(700), None));
+    }
+
+    #[test]
+    fn copilot_meeting_insert_attaches_heard_and_late_finish_without_rebinding() {
+        let conn = in_memory_db();
+        insert_test_session(&conn, "atomic-session");
+        let row_id = insert_copilot_card_v2_on(
+            &conn,
+            "atomic-session",
+            1,
+            None,
+            "local",
+            "auto",
+            None,
+            "What is atomic?",
+            "now",
+        )
+        .unwrap();
+
+        let meeting_id = insert_meeting_with_copilot_session_on(
+            &conn,
+            &test_meeting("First"),
+            Some("atomic-session"),
+        )
+        .unwrap();
+        finish_test_card(&conn, row_id, "done", "[]", true, false, 0).unwrap();
+
+        let ownership: (Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT
+                    (SELECT meeting_id FROM copilot_sessions WHERE session_id = 'atomic-session'),
+                    (SELECT meeting_id FROM copilot_cards WHERE id = ?1)",
+                [row_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(ownership, (Some(meeting_id), Some(meeting_id)));
+
+        let meeting_count_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM meetings", [], |row| row.get(0))
+            .unwrap();
+        let conflict = insert_meeting_with_copilot_session_on(
+            &conn,
+            &test_meeting("Conflicting"),
+            Some("atomic-session"),
+        );
+        assert!(conflict.is_err());
+        let meeting_count_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM meetings", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(meeting_count_after, meeting_count_before);
+        assert!(
+            attach_copilot_cards_by_session_on(&conn, "atomic-session", meeting_id + 100,).is_err()
+        );
+    }
+
+    #[test]
+    fn copilot_attachment_rejects_a_session_with_conflicting_card_ownership() {
+        let conn = in_memory_db();
+        insert_test_session(&conn, "conflicting-card-session");
+        let row_id = insert_copilot_card_v2_on(
+            &conn,
+            "conflicting-card-session",
+            1,
+            None,
+            "local",
+            "auto",
+            None,
+            "Who owns this card?",
+            "now",
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE copilot_cards SET meeting_id = 41 WHERE id = ?1",
+            [row_id],
+        )
+        .unwrap();
+
+        assert!(attach_copilot_cards_by_session_on(&conn, "conflicting-card-session", 42).is_err());
+        assert_eq!(
+            copilot_session_meeting_id(&conn, "conflicting-card-session").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn folder_copilot_web_rejects_a_missing_folder() {
+        let conn = in_memory_db();
+        assert!(set_folder_copilot_web_on(&conn, 999, true).is_err());
+        let folder = create_folder_on(&conn, "Web", "blue").unwrap();
+        set_folder_copilot_web_on(&conn, folder.id, true).unwrap();
+        assert!(folder_copilot_web(&conn, folder.id).unwrap());
+    }
+
+    #[test]
+    fn copilot_v2_receipt_separates_dispatch_and_web_counts() {
+        let conn = in_memory_db();
+        insert_test_session(&conn, "receipt");
+        let claude = insert_copilot_card_v2_on(
+            &conn, "receipt", 1, None, "claude", "auto", None, "C?", "now",
+        )
+        .unwrap();
+        finish_test_card(&conn, claude, "done", "[{},{}]", true, true, 2).unwrap();
+        let local = insert_copilot_card_v2_on(
+            &conn, "receipt", 2, None, "local", "auto", None, "L?", "now",
+        )
+        .unwrap();
+        finish_test_card(&conn, local, "error", "[{}]", false, false, 0).unwrap();
+        let no_ai = insert_copilot_card_v2_on(
+            &conn, "receipt", 3, None, "no_ai", "auto", None, "N?", "now",
+        )
+        .unwrap();
+        finish_test_card(&conn, no_ai, "done", "[{}]", false, false, 0).unwrap();
+        let cancelled_after_dispatch = insert_copilot_card_v2_on(
+            &conn,
+            "receipt",
+            4,
+            None,
+            "claude",
+            "auto",
+            None,
+            "Cancelled?",
+            "now",
+        )
+        .unwrap();
+        finish_test_card(
+            &conn,
+            cancelled_after_dispatch,
+            "cancelled",
+            "[{}]",
+            true,
+            true,
+            1,
+        )
+        .unwrap();
+        let skipped_with_frozen_web = insert_copilot_card_v2_on(
+            &conn,
+            "receipt",
+            5,
+            None,
+            "claude",
+            "auto",
+            None,
+            "Skipped before dispatch?",
+            "now",
+        )
+        .unwrap();
+        finish_test_card(
+            &conn,
+            skipped_with_frozen_web,
+            "skipped",
+            "[]",
+            false,
+            true,
+            0,
+        )
+        .unwrap();
+        let deepseek = insert_copilot_card_v2_on(
+            &conn, "receipt", 6, None, "deepseek", "auto", None, "D?", "now",
+        )
+        .unwrap();
+        finish_test_card(&conn, deepseek, "done", "[{}]", true, false, 0).unwrap();
+        attach_copilot_cards_by_session_on(&conn, "receipt", 42).unwrap();
+
+        let receipt = copilot_receipt_v2_on(&conn, 42).unwrap();
+        assert_eq!(receipt.questions, 3);
+        assert_eq!(receipt.passages, 4);
+        assert_eq!(receipt.claude_questions, 2);
+        assert_eq!(receipt.deepseek_questions, 1);
+        assert_eq!(receipt.local_questions, 0);
+        assert_eq!(receipt.web_requested, 2);
+        assert_eq!(receipt.web_performed, 3);
+    }
+
+    #[test]
+    fn copilot_cards_storage_lifecycle_and_receipt() {
+        let conn = in_memory_db();
+
+        // 1. Receipt for unknown meeting is all zeros
+        let empty_receipt = copilot_receipt_on(&conn, 999).unwrap();
+        assert_eq!(empty_receipt, CopilotReceipt::default());
+
+        // 2. Insert card 1 (claude)
+        let passages = serde_json::json!([
+            {"title": "Note 1", "text": "passage 1", "source": "notes:1"},
+            {"title": "Note 2", "text": "passage 2", "source": "notes:2"}
+        ])
+        .to_string();
+        let row1 = insert_copilot_card_on(
+            &conn,
+            1,
+            101,
+            Some(5),
+            "claude",
+            "What was agreed?",
+            &passages,
+            240,
+            "2026-09-04T07:00:00Z",
+        )
+        .unwrap();
+        assert!(row1 > 0);
+
+        // Finish card 1
+        let prov = serde_json::json!([
+            {"text": "bullet 1", "label": "notes", "passage_index": 0}
+        ])
+        .to_string();
+        finish_copilot_card_on(&conn, row1, Some("- bullet 1"), Some(&prov), true, false).unwrap();
+
+        // Insert card 2 (local)
+        let row2 = insert_copilot_card_on(
+            &conn,
+            1,
+            102,
+            Some(5),
+            "local",
+            "How do we run tests?",
+            "[]",
+            180,
+            "2026-09-04T07:01:00Z",
+        )
+        .unwrap();
+        // Finish card 2 without web
+        finish_copilot_card_on(&conn, row2, Some("- run cargo test"), None, false, false).unwrap();
+
+        // Insert card 3 (cancelled)
+        let row3 = insert_copilot_card_on(
+            &conn,
+            1,
+            103,
+            Some(5),
+            "claude",
+            "Is this cancelled?",
+            "[]",
+            120,
+            "2026-09-04T07:02:00Z",
+        )
+        .unwrap();
+        finish_copilot_card_on(&conn, row3, None, None, false, true).unwrap();
+
+        // Insert card 4 from a different meeting (already attached)
+        let row4 = insert_copilot_card_on(
+            &conn,
+            1,
+            104,
+            Some(5),
+            "claude",
+            "Already attached",
+            "[]",
+            100,
+            "2026-09-04T07:03:00Z",
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE copilot_cards SET meeting_id = 888 WHERE id = ?1",
+            params![row4],
+        )
+        .unwrap();
+
+        // Attach cards of epoch 1 to meeting 42
+        let attached = attach_copilot_cards_to_meeting_on(&conn, 1, 42).unwrap();
+        // Only rows 1, 2, 3 had NULL meeting_id
+        assert_eq!(attached, 3);
+
+        // Verify row 4 still has meeting_id 888
+        let row4_mid: i64 = conn
+            .query_row(
+                "SELECT meeting_id FROM copilot_cards WHERE id = ?1",
+                params![row4],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(row4_mid, 888);
+
+        // Check receipt for meeting 42
+        let receipt = copilot_receipt_on(&conn, 42).unwrap();
+        // 2 non-cancelled questions (row 1, row 2; row 3 is cancelled)
+        assert_eq!(receipt.questions, 2);
+        // row 1 has 2 passages, row 2 has 0
+        assert_eq!(receipt.passages, 2);
+        // 1 claude, 1 local
+        assert_eq!(receipt.claude_questions, 1);
+        assert_eq!(receipt.local_questions, 1);
+        // 1 web search (row 1 had web_used=true)
+        assert_eq!(receipt.web_requested, 1);
+        assert_eq!(receipt.web_performed, 1);
+    }
+}
+
+#[cfg(test)]
+mod folder_evidence_tests {
+    use super::*;
+
+    #[test]
+    fn folder_sources_schema_is_idempotent_and_migrates_legacy_folders() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE folders (
+            id INTEGER PRIMARY KEY, uid TEXT NOT NULL DEFAULT '', name TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT 'blue', instructions TEXT NOT NULL DEFAULT '',
+            copilot_mode TEXT NOT NULL DEFAULT 'no_ai', copilot_web INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            INSERT INTO folders (id, name, created_at, updated_at) VALUES (1, 'Legacy', '', '');",
+        )
+        .unwrap();
+        create_tables(&conn).unwrap();
+        create_tables(&conn).unwrap();
+        let folder = get_folder_on(&conn, 1).unwrap().unwrap();
+        for value in [
+            &folder.purpose,
+            &folder.profile,
+            &folder.profile_hash,
+            &folder.profile_at,
+            &folder.voice_1,
+            &folder.voice_2,
+        ] {
+            assert_eq!(value, "");
+        }
+        assert_eq!(folder.name, "Legacy");
+    }
+
+    #[test]
+    fn folder_sources_list_counts_and_delete_cascade_are_literal_and_scoped() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Me", "blue").unwrap();
+        let other = create_folder_on(&conn, "Other", "blue").unwrap();
+        let source = insert_folder_source_on(&conn, folder.id, "/tmp/a_b", "dir", "now").unwrap();
+        assert_eq!(
+            insert_folder_source_on(&conn, folder.id, "/tmp/a_b", "dir", "later")
+                .unwrap()
+                .id,
+            source.id
+        );
+        for (id, path) in [
+            (folder.id, "/tmp/a_b/doc.md"),
+            (folder.id, "/tmp/axb/doc.md"),
+            (other.id, "/tmp/a_b/doc.md"),
+        ] {
+            upsert_folder_doc_on(&conn, id, path, "Title", "hermetic deployment", "1", "now")
+                .unwrap();
+        }
+        assert_eq!(
+            list_folder_sources_on(&conn, folder.id).unwrap()[0].doc_count,
+            1
+        );
+        assert_eq!(
+            delete_folder_source_on(&conn, source.id).unwrap(),
+            Some((folder.id, "/tmp/a_b".into()))
+        );
+        assert!(list_folder_sources_on(&conn, folder.id).unwrap().is_empty());
+        assert_eq!(
+            folder_doc_paths_on(&conn, folder.id).unwrap()[0].0,
+            "/tmp/axb/doc.md"
+        );
+        assert_eq!(folder_doc_paths_on(&conn, other.id).unwrap().len(), 1);
+        assert!(delete_folder_source_on(&conn, source.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn folder_fts_tracks_insert_update_delete_and_scopes_results() {
+        let conn = in_memory_db();
+        upsert_folder_doc_on(
+            &conn,
+            1,
+            "/a.md",
+            "Project",
+            "hermetic deployment",
+            "1",
+            "now",
+        )
+        .unwrap();
+        upsert_folder_doc_on(
+            &conn,
+            2,
+            "/b.md",
+            "Project",
+            "hermetic deployment",
+            "1",
+            "now",
+        )
+        .unwrap();
+        let ids = search_folder_doc_ids_on(&conn, 1, "hermetic", 10).unwrap();
+        assert_eq!(get_folder_docs_on(&conn, &ids).unwrap()[0].1, "/a.md");
+        assert_eq!(ids.len(), 1);
+        create_tables(&conn).unwrap();
+        upsert_folder_doc_on(
+            &conn,
+            1,
+            "/a.md",
+            "Project",
+            "air-gapped cluster",
+            "2",
+            "later",
+        )
+        .unwrap();
+        assert!(search_folder_doc_ids_on(&conn, 1, "hermetic", 10)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            search_folder_doc_ids_on(&conn, 1, "air-gapped", 10)
+                .unwrap()
+                .len(),
+            1
+        );
+        delete_folder_doc_on(&conn, 1, "/a.md").unwrap();
+        assert!(search_folder_doc_ids_on(&conn, 1, "cluster", 10)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn folder_copilot_fields_round_trip_through_every_mapper() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Me", "blue").unwrap();
+        set_folder_copilot_fields_on(&conn, folder.id, " Interview ", " So, ", " In practice ")
+            .unwrap();
+        set_folder_profile_on(
+            &conn,
+            folder.id,
+            "Me builds tools.",
+            "hash",
+            "2026-09-07T00:00:00Z",
+        )
+        .unwrap();
+        for loaded in [
+            get_folder_on(&conn, folder.id).unwrap().unwrap(),
+            get_folder_by_uid_on(&conn, &folder.uid).unwrap().unwrap(),
+            get_folder_by_name_on(&conn, "Me").unwrap().unwrap(),
+            list_folders_on(&conn).unwrap().remove(0).folder,
+        ] {
+            assert_eq!(loaded.purpose, "Interview");
+            assert_eq!(loaded.profile, "Me builds tools.");
+            assert_eq!(loaded.profile_hash, "hash");
+            assert_eq!(loaded.profile_at, "2026-09-07T00:00:00Z");
+            assert_eq!(loaded.voice_1, "So,");
+            assert_eq!(loaded.voice_2, "In practice");
+        }
+    }
+
+    #[test]
+    fn folder_copilot_field_limits_and_missing_folder_errors() {
+        let conn = in_memory_db();
+        let id = create_folder_on(&conn, "Me", "blue").unwrap().id;
+        set_folder_copilot_fields_on(&conn, id, &"界".repeat(350), &"界".repeat(650), "").unwrap();
+        let folder = get_folder_on(&conn, id).unwrap().unwrap();
+        assert_eq!(folder.purpose.chars().count(), 300);
+        assert_eq!(folder.voice_1.chars().count(), 600);
+        assert_eq!(
+            set_folder_copilot_fields_on(&conn, 999, "", "", "")
+                .unwrap_err()
+                .to_string(),
+            "Folder not found"
+        );
+        assert_eq!(
+            insert_folder_source_on(&conn, 999, "/tmp", "dir", "now")
+                .unwrap_err()
+                .to_string(),
+            "Folder not found"
+        );
+    }
+
+    #[test]
+    fn manual_folder_profile_round_trip_trims_and_records_edit_time() {
+        let conn = in_memory_db();
+        let id = create_folder_on(&conn, "Me", "blue").unwrap().id;
+        set_folder_profile_on(&conn, id, "Generated role", "hash", "old time").unwrap();
+        let before = chrono::Utc::now();
+        set_folder_profile_manual_on(&conn, id, " \n My corrected role. \t").unwrap();
+        let after = chrono::Utc::now();
+        let folder = get_folder_on(&conn, id).unwrap().unwrap();
+        assert_eq!(folder.profile, "My corrected role.");
+        assert_eq!(folder.profile_hash, "manual");
+        let edited_at = chrono::DateTime::parse_from_rfc3339(&folder.profile_at).unwrap();
+        assert!(edited_at >= before && edited_at <= after);
+
+        set_folder_profile_manual_on(&conn, id, " \n ").unwrap();
+        let cleared = get_folder_on(&conn, id).unwrap().unwrap();
+        assert_eq!(cleared.profile, "");
+        assert_eq!(cleared.profile_hash, "manual");
+    }
+
+    #[test]
+    fn manual_folder_profile_enforces_character_limit_without_modifying_existing_value() {
+        let conn = in_memory_db();
+        let id = create_folder_on(&conn, "Me", "blue").unwrap().id;
+        let profile = "界".repeat(1_200);
+        set_folder_profile_manual_on(&conn, id, &format!("  {profile}\n")).unwrap();
+        let before = get_folder_on(&conn, id).unwrap().unwrap();
+        assert_eq!(before.profile, profile);
+        assert_eq!(
+            set_folder_profile_manual_on(&conn, id, &"界".repeat(1_201))
+                .unwrap_err()
+                .to_string(),
+            "Profile exceeds 1200 characters"
+        );
+        let after = get_folder_on(&conn, id).unwrap().unwrap();
+        assert_eq!(after.profile, before.profile);
+        assert_eq!(after.profile_hash, before.profile_hash);
+        assert_eq!(after.profile_at, before.profile_at);
+        assert_eq!(
+            set_folder_profile_manual_on(&conn, 999, "Valid profile")
+                .unwrap_err()
+                .to_string(),
+            "Folder not found"
+        );
+    }
+}
+
+#[cfg(test)]
+mod slice2_tests {
+    use super::*;
+
+    #[test]
+    fn slice2_migration_twice() {
+        for legacy in [false, true] {
+            let conn = in_memory_db();
+            insert_copilot_session_on(&conn, "session", None, "local", "now").unwrap();
+            let folder = create_folder_on(&conn, "Interview", "blue").unwrap();
+            if legacy {
+                conn.execute_batch(
+                    "ALTER TABLE copilot_sessions DROP COLUMN pack_text;
+                    ALTER TABLE copilot_sessions DROP COLUMN pack_hash;
+                    ALTER TABLE copilot_cards DROP COLUMN resolved_question;
+                    ALTER TABLE folders DROP COLUMN folder_terms;",
+                )
+                .unwrap();
+                assert!(!column_exists(&conn, "copilot_cards", "resolved_question").unwrap());
+                create_tables(&conn).unwrap();
+            }
+            migrate_copilot_slice2(&conn).unwrap();
+            migrate_copilot_slice2(&conn).unwrap();
+            assert_eq!(
+                get_session_pack_on(&conn, "session").unwrap(),
+                (String::new(), String::new())
+            );
+            assert!(get_folder_terms_on(&conn, folder.id).unwrap().is_empty());
+            set_session_pack_on(&conn, "session", "Project A: 界", "hash").unwrap();
+            set_folder_terms_on(
+                &conn,
+                folder.id,
+                &["RAG".into(), "ct2".into(), "rag".into()],
+            )
+            .unwrap();
+            let card = insert_copilot_card_resolved_on(
+                &conn,
+                "session",
+                1,
+                Some(folder.id),
+                "local",
+                "auto",
+                None,
+                "What is subject hash?",
+                Some("subject hash idempotent"),
+                "now",
+            )
+            .unwrap();
+            migrate_copilot_slice2(&conn).unwrap();
+            assert_eq!(
+                get_session_pack_on(&conn, "session").unwrap(),
+                ("Project A: 界".into(), "hash".into())
+            );
+            assert_eq!(
+                get_folder_terms_on(&conn, folder.id).unwrap(),
+                ["ct2", "rag"]
+            );
+            assert_eq!(
+                conn.query_row(
+                    "SELECT resolved_question FROM copilot_cards WHERE id = ?1",
+                    [card],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+                "subject hash idempotent"
+            );
+            assert!(set_session_pack_on(&conn, "session", &"界".repeat(2001), "hash").is_err());
+        }
     }
 }

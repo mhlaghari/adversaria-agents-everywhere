@@ -8,6 +8,50 @@ Format: **Decision · Context · Alternatives · Why · Status.** Newest first.
 
 ---
 
+## ADR-020 — A live copilot with a knowledge cascade (your notes → Claude → web), one CONSENT switch instead of a mode switch, and "local-first" as reassurance rather than headline
+
+**Status:** ACCEPTED as direction 2026-09-02 (founder, evening); spec v1 in
+`docs/superpowers/specs/2026-09-02-live-copilot-design.md`; slice C (answer stream + consent + keychain key + provenance)
+built 2026-09-04 on `feat/live-copilot-c`, uncommitted; the §6b local-under-load
+probe passed 2026-09-03 (LESSONS / `.recon/copilot-probe/stage_e_underload_results.json`).
+
+**Decision.** During recording, when the other party asks something, a rail
+beside the transcript shows (1) verbatim passages from the user's own material,
+instantly and deterministically, then (2) a short model answer whose every
+bullet is labeled *your notes* (verified in code against the passages) /
+*Claude* / *web*, with "Not in your notes" as the first bullet whenever the
+question is about the user's own experience and nothing matched. The app runs
+the local retrieval; the model never "decides" whether to look locally. The
+only user-facing switch is consent: **No AI** (previous-meeting facts only,
+zero egress) · **AI · Claude** (question + passages leave the machine, never
+the transcript; "Will send" line before, receipt after) · **AI · Local model**
+(same loop, labeled slower and lower quality). Positioning: "local by default,
+nothing leaves without your say" stays true and stays in the copy, but the
+headline becomes what the product does; the local model is an option, not the
+promise.
+
+**Context.** Three founder use cases (recurring meetings, interviews as the
+candidate, expert calls with no context) turned out to be one loop with three
+knowledge sources. The 2026-09-02 follow-up work showed the local 4B model
+cannot be trusted to assert facts without code-level verification, and the
+founder said plainly that the local model "sucks at doing things"; cloud
+Claude is the practical answer tier, which conflicts with a "100% local"
+headline but not with the per-run opt-in ADR-002 already promised.
+
+**Alternatives.** (a) A deterministic ↔ creative mode switch — rejected: the
+deterministic layer (passages) is always present, so the switch adds nothing.
+(b) Headless Claude Code as the live answerer — rejected for live cards
+(agent harness, seconds of startup); it remains the post-meeting executor.
+(c) Keep "100% local" as the headline and ship the copilot local-only —
+rejected: quality and latency of the 4B model make the interview case useless.
+(d) Auto-inject previous meetings into every note (Fellow-style carry-forward
+by default) — deferred; per-folder default instead.
+
+**Why.** Honesty is enforced where it can be (code-verified provenance),
+privacy is enforced where it matters (consent + minimal egress + receipt), and
+the user gets the fast tier when they choose it. Supersedes the "no cloud
+path" reading of ADR-002; keeps its per-run opt-in.
+
 ## ADR-019 — Live captions are two tiers: an English Moonshine PREVIEW re-decoded every 500 ms, replaced per utterance by the Whisper caption
 
 **Status:** ACCEPTED 2026-09-01 (founder: "build item three, both Mac and Windows");
@@ -466,6 +510,12 @@ own.
   card needs the `macos-private-api` Tauri feature (+ `app.macOSPrivateApi`).
   Not yet exercised: a real live meeting (needs the Screen-Recording grant + a
   call). See [HANDOFF.md](./HANDOFF.md) for the macOS runbook.
+- **Superseded in part (2026-08-13, `9589e8c`):** system audio moved from
+  ScreenCaptureKit to alternative (b), a **Core Audio process tap** through cpal's
+  loopback input; ScreenCaptureKit was removed. The required grant is now
+  *System Audio Recording*, and holding Screen Recording suppresses that prompt
+  (LESSONS_LEARNED 2026-08-17). The rest of this ADR (cpal mic, MLX, CoreAudio
+  detection) stands.
 
 ## ADR-009 — LLM behind a config-selectable backend; vLLM (via WSL2) as the concurrency target
 - **Context:** Ollama serializes requests on one loaded model — an interactive

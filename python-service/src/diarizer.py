@@ -91,8 +91,7 @@ def merge_minor_speakers(
         )[2]
 
     return [
-        t if t[2] in majors else (t[0], t[1], nearest_major(t[0], t[1]))
-        for t in turns
+        t if t[2] in majors else (t[0], t[1], nearest_major(t[0], t[1])) for t in turns
     ]
 
 
@@ -165,9 +164,7 @@ def merge_similar_speakers(
                 ra, rb = find(a), find(b)
                 if ra != rb:
                     # Longest-speaking speaker of the pair wins the label.
-                    winner, loser = (
-                        (ra, rb) if totals[ra] >= totals[rb] else (rb, ra)
-                    )
+                    winner, loser = (ra, rb) if totals[ra] >= totals[rb] else (rb, ra)
                     parent[loser] = winner
     if all(find(s) == s for s in totals):
         return turns
@@ -296,7 +293,9 @@ def diarize(wav_path: str, voiced_starts: list[float] | None = None) -> list[Tur
 
     sd = _get_diarizer()
     audio = decode_audio(wav_path, sampling_rate=sd.sample_rate)  # 16k mono float32
-    turns = [(t.start, t.end, t.speaker) for t in sd.process(audio).sort_by_start_time()]
+    turns = [
+        (t.start, t.end, t.speaker) for t in sd.process(audio).sort_by_start_time()
+    ]
     if voiced_starts is not None:
         turns = drop_unvoiced_turns(turns, voiced_starts)
     turns = merge_minor_speakers(turns)

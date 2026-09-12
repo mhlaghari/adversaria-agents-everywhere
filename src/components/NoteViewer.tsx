@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  exportAdversaria,
   exportHtml,
-  exportMeetingBundle,
   exportSummary,
   getActionItems,
   getConfig,
+  getCopilotReceipt,
   getMeeting,
   getMeetingStats,
+  listMeetingAttachments,
   listTemplates,
   mergeMeetingSpeakers,
   renameMeetingPerson,
@@ -27,6 +29,7 @@ import {
 import type {
   ActionItem,
   Meeting,
+  MeetingAttachment,
   MeetingStats,
   RelatedMeetingRef,
   SummaryLanguage,
@@ -44,14 +47,18 @@ import {
   summaryToPlainText,
   withoutSpeakerLabels,
 } from "../lib/summary";
-import { buildSlideHtml, exportFileBase } from "../lib/exportDocument";
+import { buildSlideHtml, exportFileBase, readExportTheme } from "../lib/exportDocument";
 import { formatDate, formatDateTime } from "../lib/dateFormat";
+import { open } from "@tauri-apps/plugin-shell";
 import { templateDisplayName } from "../lib/templateNames";
 import {
   Download,
   FileJson,
+  FileText,
   Folder,
+  History,
   Lock,
+  NotebookPen,
   Pin,
   Presentation,
   Trash2,
@@ -243,6 +250,58 @@ export function NoteViewer({
   ]);
   const [activeTab, setActiveTab] = useState<Tab>("summary");
   const [relatedMeetingsList, setRelatedMeetingsList] = useState<RelatedMeetingRef[]>([]);
+  const [attachments, setAttachments] = useState<MeetingAttachment[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMeetingAttachments(meeting.id)
+      .then((items) => {
+        if (!cancelled) {
+          setAttachments(Array.isArray(items) ? items : []);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn("[note] could not load attachments:", error);
+          setAttachments([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting.id]);
+
+  const [copilotReceiptLine, setCopilotReceiptLine] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getCopilotReceipt(meeting.id)
+      .then((r) => {
+        if (cancelled || !r || r.questions === 0) return;
+        let dest: string;
+        const hasClaude = r.claude_questions > 0;
+        const hasDeepSeek = r.deepseek_questions > 0;
+        const hasLocal = r.local_questions > 0;
+        const providers = [
+          hasClaude ? "Claude" : "",
+          hasDeepSeek ? "DeepSeek" : "",
+          hasLocal ? "the local model" : "",
+        ].filter(Boolean);
+        if (providers.length === 0) dest = "without a provider dispatch";
+        else if (providers.length === 1) dest = `to ${providers[0]}`;
+        else dest = `to ${providers.slice(0, -1).join(", ")} and ${providers.at(-1)}`;
+        const line = `Copilot sent ${r.questions} questions and ${r.passages} passages ${dest} \u00b7 ${r.web_performed} web searches`;
+        if (!cancelled) setCopilotReceiptLine(line);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting.id]);
+
+  const noteLines = (meeting.user_notes ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean).length;
 
   useEffect(() => {
     let cancelled = false;
@@ -838,16 +897,36 @@ export function NoteViewer({
     }
   };
 
-  // Export the meeting as a self-contained dark "Meeting Minutes" slide (.html).
-  // Opens in any browser; can be turned into a PDF from there (Cmd/Ctrl+P).
   const handleExportSlide = async () => {
     try {
+      const theme = readExportTheme();
       const path = await exportHtml(
         `${exportFileBase(meeting)}.html`,
-        buildSlideHtml(meeting),
+        buildSlideHtml(meeting, theme),
       );
       if (path) {
-        setExportMsg(`Saved to ${path}`);
+        setExportMsg(`Saved ${theme.label} deck to ${path}`);
+        setTimeout(() => setExportMsg(null), 4000);
+      }
+    } catch (e) {
+      setExportMsg(String(e));
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      const theme = readExportTheme();
+      const path = await exportHtml(
+        `${exportFileBase(meeting)}-print.html`,
+        buildSlideHtml(meeting, theme),
+      );
+      if (path) {
+        try {
+          await open(`file://${path}#print`);
+          setExportMsg(`Opened the deck in your browser — press Save as PDF in the print dialog`);
+        } catch {
+          setExportMsg(`Saved to ${path} — open it and use Print / Save as PDF`);
+        }
         setTimeout(() => setExportMsg(null), 4000);
       }
     } catch (e) {
@@ -857,7 +936,7 @@ export function NoteViewer({
 
   const handleExportBundle = async () => {
     try {
-      const path = await exportMeetingBundle(meeting.id);
+      const path = await exportAdversaria([meeting.id], null);
       if (path) {
         setExportMsg(`Saved to ${path}`);
         setTimeout(() => setExportMsg(null), 4000);
@@ -1558,6 +1637,17 @@ export function NoteViewer({
                             role="menuitem"
                             onClick={() => {
                               setExportMenuOpen(false);
+                              handleExportPdf();
+                            }}
+                          >
+                            <Presentation size={15} aria-hidden="true" />
+                            Export as PDF (opens print)…
+                          </button>
+                          <button
+                            className="settings-menu-item"
+                            role="menuitem"
+                            onClick={() => {
+                              setExportMenuOpen(false);
                               handleExport();
                             }}
                           >
@@ -1574,8 +1664,11 @@ export function NoteViewer({
                             }}
                           >
                             <FileJson size={15} aria-hidden="true" />
-                            Export bundle (.json)…
+                            Export as .adversaria…
                           </button>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 8px 2px", lineHeight: 1.4 }}>
+                            Plain-text file: contains the transcript and notes.
+                          </div>
                         </div>
                       </>
                     )}
@@ -1629,6 +1722,54 @@ export function NoteViewer({
               </div>
             ) : (
               <>
+                {(noteLines > 0 || attachments.length > 0 || copilotReceiptLine) && (
+                  <div className="context-used" role="list" aria-label="Context used for these notes">
+                    <span className="context-used-label">Context used</span>
+                    {noteLines > 0 && (
+                      <span
+                        className="context-used-chip"
+                        role="listitem"
+                        title="Your typed notes steered these notes and appear under “From Your Notes”."
+                      >
+                        <NotebookPen size={14} aria-hidden="true" />
+                        Your notes · {noteLines} {noteLines === 1 ? "line" : "lines"}
+                      </span>
+                    )}
+                    {copilotReceiptLine && (
+                      <span className="context-used-chip" role="listitem">{copilotReceiptLine}</span>
+                    )}
+                    {attachments.map((attachment) =>
+                      attachment.kind === "meeting" ? (
+                        <button
+                          type="button"
+                          key={attachment.id}
+                          role="listitem"
+                          className="context-used-chip context-used-chip--link"
+                          title="Its open action items got a follow-up check in these notes. Click to open it."
+                          onClick={() => onOpenMeetingId?.(Number(attachment.value))}
+                        >
+                          <History size={14} aria-hidden="true" />
+                          <span dir="auto">{attachment.label}</span>
+                        </button>
+                      ) : (
+                        <span
+                          key={attachment.id}
+                          role="listitem"
+                          className="context-used-chip"
+                          title={`Used as background for the notes (${attachment.value})`}
+                        >
+                          <FileText size={14} aria-hidden="true" />
+                          <span dir="auto">
+                            {attachment.label}
+                            {!attachment.value.includes("/") && !attachment.value.includes("\\") ? (
+                              <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>(file not included)</span>
+                            ) : null}
+                          </span>
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
                 <SummaryView
                   summary={meeting.summary}
                   actionItems={actionItems}

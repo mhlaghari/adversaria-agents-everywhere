@@ -5,7 +5,169 @@ live), then the roadmap toward a Granola-quality product, then smaller polish.
 
 Mark items done by moving them to the bottom "Done" section with the date.
 
-> **2026-09-01 — ✅ BUILT (uncommitted, `feat/live-captions`): the streaming
+> **2026-09-11 — 🟠 Companion layout de-noise shipped without its four tests** (`copilot_focus_narrow`, `consent_summary_per_mode`, `consent_hint_only_for_selected_mode`, `stale_no_speech_notice_clears`; spec `.recon/interview-copilot-20260908/spec-layout-frontend.md`). Add them before commit.
+>
+> **2026-09-09 — ✅ SLICE 2 BUILT (uncommitted, `feat/live-copilot-c`; founder rehearsal pending).** Shipped: answer shapes, `copilot_deepseek_model` (default flash), `/copilot/warm` + keep_alive 30m (warm-up must use the answer path's `num_ctx`, see LESSONS 2026-09-09), standing pack (`build_pack`, ≤ 6,000 bytes, cached prefix), card memory (`recent_cards`, `resolved_question`), folder-only keyword gate + `folders.folder_terms` acronyms + tier d score 0.86 + 0.10 × coverage + canonical dedup, `copilot-folder-ready` readiness. Follow-ups now open: 🟠 close the local upstream once the NEXT line completes (the 35B sometimes rambles to the 640-token cap, "done" 1.7 to 12 s while the visible card is complete); 🟠 shape adherence on the 35B is loose (definitions come back as four sentences) — measure on DeepSeek Flash before tuning; 🔵 speculative start on partial captions; 🔵 practice runner with blind A/B ratings and export; 🔵 `first_sentence_ms`; 🔵 semantic tier for folder docs.
+>
+> **2026-09-08 — 🟠 COPILOT REV 6 SLICE 2 = THE INTERVIEW COPILOT (contract drafted, awaiting founder go).**
+> Founder decision 2026-09-08: the Live Copilot is for interviews; the meeting flow stays the product.
+> Contract: `.recon/interview-copilot-20260908/CONTRACT-2-interview.md` (Claude + Astra). Ship before the
+> interview, in order: (1) evidence that wins — folder-doc score 0.86 to 0.96 (today max 0.75, below live
+> notes 0.9 / meetings 0.85 / attachments 0.8), one-keyword folder tier plus a per-folder acronym allowlist
+> ("What is RAG?" retrieves nothing today), canonical-path dedup across source kinds, Purpose before About Me
+> in the header (cloud cap 1,200 bytes cuts it), "N sources indexed" readiness line; (2) bounded card memory —
+> request schema v7 `recent_cards` (max 3 done cards of the session, never evidence, 2,400/1,600-byte budget),
+> `resolved_question` for retrieval (cards 73/74 on 2026-09-07 show the failure); (3) practice runner — question
+> bank file, one question at a time through the existing queue, ratings 1 to 5, blind Local/DeepSeek pairs,
+> Markdown export, gate = median ≥ 4 and ≥ 80 % at 4 or 5. Deferred: running summary, local judge, prefetch,
+> help hotkey, a semantic tier for folder docs (`/embed`). Evidence for the copilot: the 25-file Adversaria dossier
+> in `~/Desktop/Adversaria Copilot Sources/adversaria/` (retrieval-shaped; see LESSONS 2026-09-08). Founder items:
+> refresh/edit the folder profile, purpose, voice samples, DeepSeek default; move the four interview notes out of
+> the sources directory; reconcile career numbers (8 vs 5 engineers; 25 min → 80 to 140 s vs ~150 s vs ~14 min);
+> write the twelve ERDC agents down.
+
+> **2026-09-05 — 🟠 REALTIME COPILOT V2 IMPLEMENTED (uncommitted, `feat/live-copilot-c`).**
+> Durable session-bound answers (`docs/superpowers/specs/2026-09-05-realtime-copilot-v2.md`),
+> 1-active/1-waiting queue, guarded terminal persistence (retried 3x), registered loopback endpoints,
+> authoritative `[DONE]`, five-token provenance, and companion sheet/strip. Expressive bubble headline
+> (`copilot-headline`) is deferred; companion answer strip and slide-over sheet are implemented.
+> Provider, mode, question/context/persona/web are frozen at capture; grounding passages are retrieved
+> when a queued card becomes active (retry reuses only completed retrieval and requires current provider/web consent to match).
+> All automated contract suites green:
+> - **Frontend:** 41 files / **377 tests** passed (vitest), `tsc --noEmit` clean, bundle/security green.
+> - **Rust:** **414 passed / 1 ignored** (cargo test), `cargo fmt` and `cargo clippy` clean.
+> - **Python:** **645 passed / 1 skipped** (pytest), ruff check/format clean; focused replay harness **25/25** after the final privacy, evidence, lifecycle, answer-shape, feed-failure and cadence fixes.
+> - **E1a Service Replay Harness:** Built (`scripts/copilot-e2e/replay.py`); verified dry-run simulation
+>   (`.recon/realtime-copilot-20260905/e1a-dry-run-host-final.json`, simulation with 0 executed/passed, not acceptance evidence);
+>   honest structured skip recorded (`e1a-results-host-final.json`) confirming local service is offline without downloading models.
+> - **Native Operator Runbook:** Staged at `.recon/realtime-copilot-20260905/native-runbook.md` with disposable data, invented fixtures, frame-derived measurements, and an explicit delayed-engine prerequisite for deterministic queue stress.
+> - **Installed App Notice:** Installed notarized app at `/Applications/Adversaria.app` is version **0.3.83** from an earlier build that does not contain these uncommitted v2 changes.
+> - **Completion Matrix Status:**
+>   - [x] **S1–S4 Contracts, Core, Transport, Frontend UI** — automated contract suites pass across layers.
+>   - [x] **S5 Synthetic Fixtures & E1a Replay Harness** — 14 invented scenarios, dry-run simulation verified, honest offline service skip recorded.
+>   - [x] **S6 Architecture, Operator Runbook & Handoff Docs** — complete.
+>   - [ ] 🟡 **E1b Native AI Local** — pending native capture / virtual loopback.
+>   - [ ] 🟡 **E2 Native AI Claude** — pending credential (Anthropic API key).
+>   - [ ] 🟡 **E3 Under Load Benchmarking** — pending native capture setup (≤20% live caption p95 regression check).
+>   - [ ] 🟡 **E4 Founder Rehearsal** — pending interactive rehearsal in native app.
+
+> **2026-09-03 (evening) — 🟣 Competitive gaps vs DoodleNote (see
+> [docs/DOODLENOTE_COMPARISON.md](./DOODLENOTE_COMPARISON.md)).** Founder
+> decisions pending, not started. DoodleNote (doodlenote.ai, Onyx Dev Labs,
+> MIT, Electron, v0.4.18 on 2026-09-01) ships the same pitch as a free local
+> app plus a $10/user/month Sync tier; assessed 2026-09-03 by three agents.
+> Six things they have that we do not, ordered by how much they change daily
+> use:
+> - [ ] 🟡 **macOS ringing-call prompt + auto-stop when the call ends.** We
+>       detect on Windows only and never stop on our own; they prompt within
+>       ~5 s of Zoom / Teams / FaceTime / Slack huddle ringing, then stop and
+>       generate notes when the call ends.
+> - [ ] 🟡 **Microsoft 365 calendar.** `docs/SPEC_CALENDAR.md` exists; not built.
+> - [ ] 🟡 **Publish the Windows beta as-is with a SmartScreen note.** Our code
+>       is complete and unshipped; theirs is an unsigned beta and they ship it.
+> - [ ] 🟡 **Rich-text notes editor.** Ours is a textarea plus rendered
+>       markdown; theirs is TipTap with images, a toolbar and checkbox state
+>       that survives reopen.
+> - [ ] 🟡 **In-app one-click MCP connect**: a Settings row that writes the
+>       `uvx adversaria-mcp` entry for Claude Desktop / Claude Code / Codex.
+>       The server itself exists (`LaghariLabs/adversaria-mcp` 0.2.0 on PyPI).
+> - [ ] 🟡 **Opt-in keep-recording** with click-to-seek playback and
+>       re-transcribe. Delete-after-transcribe stays the default (privacy
+>       choice); this is an explicit per-recording opt-in.
+
+> **2026-09-03 (overnight) — ✅ EXPORTS built (commit `39b6782` on
+> `feat/live-copilot`, awaiting the founder's dev-app review; specs `.recon/spec-export-E1-rust.md` /
+> `spec-export-E2-frontend.md`, code map `.recon/recon-codex-export-map.md`):**
+> (1) theme-matched slide deck + print/PDF — the deck (`exportDocument.ts`)
+> was fixed dark and blind to `data-theme`; now takes an `ExportTheme`
+> snapshot of the live CSS tokens (Laghari Labs → Laghari deck), print CSS
+> follows the theme, an in-deck Print / Save as PDF button, an "Export as
+> PDF…" menu item. Not done: embedding the `laghari` fonts (Pixelify Sans /
+> IBM Plex Mono are name-only, no local files) → 🟡 bundle licensed font files
+> later; a native one-click PDF (WKWebView PDF was dropped earlier) → 🟡.
+> (2) `.adversaria` document: versioned JSON envelope with stable meeting +
+> folder uids, rich action-item state, attachment metadata (no file bytes),
+> folder export/import, re-import de-dup by uid, legacy `.adversaria.json`
+> still imports, `bundle.fileAssociations` + open-with (`RunEvent::Opened`,
+> argv, single-instance args → `open-adversaria-file`). 🟡 follow-ups: ship
+> file bytes for small text attachments; drag-and-drop import (native
+> drag-drop is disabled on the main window for the folder DnD); Windows
+> association needs a real installer test; plaintext warning copy.
+> Founder review 2026-09-03 07:11: the themed deck DID work (his 07:13
+> export carries the Laghari palette) but *Export as PDF…* saving an .html
+> confused him → FIXED `73fcf81` (opens the deck in the browser with `#print`);
+> 🟡 PPT/PPTX export — founder: "not a priority at the moment"; 🔴→✅ companion
+> right column broke when the tabs were put inside the 280 px aside → FIXED
+> `73fcf81`; copilot force card for solo testing → FIXED `1f6f701`.
+> **2026-09-02 (late) — 🟠 LIVE COPILOT (ADR-020).** Slices A+B BUILT
+> (`34d04a2`, `23ab875`, unmerged); slices C (Claude/local cards + consent),
+> D (provenance), E (pill/pin/keys) and the local-under-load probe remain. Also: 🟡 marketing/strategy docs still
+> lead with "100% local" — rewrite headline to capability ("answers from your
+> notes") with privacy as reassurance once the copilot ships; 🟡 curated "Me"
+> folder in the vault (CV, project write-ups) as an explicit local-knowledge
+> source for interviews; 🟡 decide screen-share exclusion for rail + pill.
+> **2026-09-02 (evening) — 🔴→✅ An attached previous meeting did nothing
+> visible (BUILT + VERIFIED on `feat/meeting-context-followup`, uncommitted;
+> founder must first delete test rows 260–292 from the real DB — HANDOFF top).** Repro: founder
+> attached meeting 166 while recording 259; `attached_context_for` sent its
+> summary as background and the prompt says "never treat it as said in this
+> meeting" → Follow-ups "None mentioned", no receipt anywhere. Fix built
+> (specs `.recon/spec-ctx-{1,2,3}-*.md`): structured `prior_meetings` with open
+> to-dos → deterministic "Follow-up from <meeting>" section (Done/Discussed only
+> with a verbatim transcript quote, else Still open) + "Context used" chip strip
+> + honest companion copy. Follow-ups filed from the probe, NOT in this slice:
+> 🟡 status words/heading are English even for Arabic/Spanish output
+> (`output_language`); 🟡 attached FILES stay background only (Muse suggests a
+> "Context from <file>" section when there is overlap); 🟡 pre-existing: on
+> short transcripts `qwen3.5:4b` sometimes omits the trailing "Action Items" /
+> "Follow-ups" sections from its JSON and `_render` does not fill them (probe
+> run A: 3/3 omitted; new to-dos were folded into Key Topics) — consider a
+> template-section fallback; 🟡 `structure_note` passes `user_notes: None`.
+> Seen in the 09-02 demo run (real model): 🟡 when the model emits the
+> follow-up section itself it lands wherever the model put it (after "From
+> Your Notes" in that run) — the reconciler should always move it before
+> "From Your Notes"; 🟡 `_ensure_user_notes_section` only fills the section
+> when it is missing entirely, so a note the model drops (3 of 4 rendered)
+> is lost — reconcile per note like the follow-up items.
+> **2026-09-02 — 🟣 FOUNDER ASK: WORKSPACE REDESIGN — local model curates,
+> Claude Code / Codex executes (direction agreed, build NOT started; "tomorrow").**
+> Founder: "the local model sucks at doing things"; keep the split view; the
+> local model should provide context from his whole graph and Claude should
+> execute. What exists already (do not rebuild): Claude Code + Codex are run
+> engines (`workspace_runs.rs::detect_engines`; spawn in `commands.rs`
+> `claude -p <brief> --permission-mode acceptEdits --add-dir …` / `codex exec -s
+> workspace-write --cd <out> <brief>`), the two-pane screen (C2 `540d856`),
+> retrieval grounding (`embeddings` top-3 meetings + `context_index` top-5
+> vault/project hits at 0.55, folder excerpts inlined only for `local`). No
+> model curates the brief today. Agreed shape:
+> - **Curator (always local, extractive):** given the retrieval candidates and
+>   full transcripts, select what matters for THIS task and quote it verbatim
+>   with a source pointer per passage; never paraphrase facts (the Qwen probe
+>   invented specifics when ungrounded). Bounded job, must be seconds not
+>   minutes.
+> - **Executor (Local / Claude Code / Codex, default Claude Code when
+>   installed):** receives the curated brief; the brief is the exact payload
+>   that leaves the machine, so a pre-run "Will send: N meetings, N notes, N
+>   files" card is the per-run opt-in ADR-002 promised. Today's cloud caption
+>   ("Full agent: reads folders, writes files") never mentions egress — fix in
+>   the same slice.
+> - **Screen:** keep the two panes (right pane becomes the curated-context
+>   preview) + the Workshop Bench lifecycle: "On the bench" strip with phase
+>   narration, review sheet listing every source with excerpt peek, one-sentence
+>   Redo, Accept only inside the sheet, committed undo. Bench board:
+>   https://claude.ai/code/artifact/146ad588-1ced-4009-b8ca-cbf82342ca91
+>   (drawn single-column; founder now prefers the split — his call pending).
+> - **Rejected as default:** Claude Code pulling context itself via the
+>   companion MCP (best answers, unbounded invisible egress); maybe a later
+>   per-workspace toggle.
+> Slices: **probe first** (Antigravity, ~1 h: time the notes model curating a
+> real workspace into a cited brief; speed + hallucination are the risky
+> assumptions) → **W1** `/curate_brief` endpoint + cited brief section +
+> receipt → **W2** curator/executor split, default engine, "Will send" card,
+> honest egress caption → **W3** Bench lifecycle in the two-pane screen →
+> **W4** "Needs one answer" / "Needs context" states so the executor stops
+> instead of improvising. Branch off master (0.3.83 is on it).
+> **2026-09-01 — ✅ SHIPPED in 0.3.83 (2026-09-02; built on `feat/live-captions`): the streaming
 > preview tier.** Decided and built the same day (ADR-019): NOT tier (a)/(b)/(c)
 > below as written — the probe showed sherpa-onnx has Moonshine only OFFLINE, and
 > the streaming Zipformer is ALL-CAPS/~20% WER — but a fourth shape: Moonshine v2

@@ -326,11 +326,15 @@ fn collect_folder_excerpt_candidates(root: &Path) -> Vec<FolderExcerptCandidate>
             if !is_excerpt_candidate(&child_path) {
                 continue;
             }
+            // Render excerpt headings with '/' on every OS so briefs are identical
+            // on Windows and macOS (Windows would otherwise emit `docs\guide.md`).
             let relative_path = child_path
                 .strip_prefix(root)
                 .unwrap_or(&child_path)
-                .to_string_lossy()
-                .into_owned();
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
             candidates.push(FolderExcerptCandidate {
                 priority,
                 relative_path,
@@ -1289,6 +1293,7 @@ mod tests {
     fn meeting(transcript: String) -> Meeting {
         Meeting {
             id: 7,
+            uid: String::new(),
             title: "Launch review".to_string(),
             recorded_at: String::new(),
             duration_seconds: 0.0,

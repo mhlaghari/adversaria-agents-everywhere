@@ -6,6 +6,154 @@ whenever you burn time on something a future contributor shouldn't have to.
 
 Each entry: **Symptom → Root cause → Fix → Prevention.** Newest first.
 
+## 2026-09-09 — An Ollama "warm-up" with a different `num_ctx` is a wasted load: the next real request reloads the runner
+
+- **Symptom:** after `POST /copilot/warm` returned ok and `ollama ps` showed `qwen3.6:35b` resident with a 30 min keep-alive, the first copilot answer still took 6.95 s to its first sentence instead of the expected sub-second.
+- **Root cause:** the warm-up called `client.chat` with `_ollama_options(2048)` while the answer path uses `_adaptive_num_ctx(...)` (16,384 floor on this Mac). Ollama keeps one runner per (model, num_ctx, …) and reloads when `num_ctx` changes, so the warm runner was discarded on the first real request. `ollama ps` shows the loaded CONTEXT column: 2048 after the bad warm-up, 16384 after the fix.
+- **Fix (`python-service/src/summarizer.py` `copilot_warm`):** warm with `_ollama_options(_adaptive_num_ctx(0, use_model, client))`, i.e. exactly the options the answer path will send. Verified: first SAY sentence 0.71 s immediately after warm-up.
+- **Prevention:** any preload must replicate the real call's runner-affecting options (`num_ctx`, model tag, thinking flag); check `ollama ps` CONTEXT after warming. The same applies to the summarizer versus copilot: they use different `num_ctx` sizes, so summarizing a meeting right before an interview question evicts the copilot's runner (the 4B summarizer and the 35B copilot are different models anyway, but two 35B calls with different `num_ctx` would thrash).
+
+## 2026-09-08 — Copilot folder sources retrieve ONE paragraph per file by keyword only; write evidence as many small single-topic files
+
+- **Symptom:** the founder wanted "every technical detail" of Adversaria fed to the Interview copilot as a document. A single long dossier would have been nearly useless: the copilot could only ever quote one 600-char slice of it, and short questions would never reach it.
+- **Root cause (verified in code):** a folder `dir` source is walked to depth 3, 200 files, 200 KB each, `.md`/`.txt` only (`src-tauri/src/folder_sources.rs:15-18`); the title is the first `# ` line (`:126-135`); `folder_fts` ranks with `bm25(title×10, body×1)` over an OR of all question words (`storage.rs:1148,4158`); the folder tier runs only when the question yields two keywords of ≥4 letters or one of ≥7 (`copilot.rs:415-423`), so "What is RAG?" yields zero keywords and retrieves nothing; `excerpt_around_keywords` keeps the **single paragraph** with the most keyword occurrences, cut at 600 chars (`copilot_provenance.rs:46-75`), cloud passages capped at 1,000 bytes (`copilot_answer.py:230`); at most 3 passages; folder FTS scores max 0.75 while live notes/meeting/attachment tiers score 0.9/0.85/0.8 (`copilot.rs:617,653,684,894`); folder docs have no semantic tier; dedup keys on `(source_kind, source_id)`.
+- **Fix:** the Adversaria dossier is 25 files, one topic each, `# Adversaria: <topic with the interviewer's words>` as the title, three self-contained paragraphs of 350 to 500 chars each with number, unit, date and caveat in the same paragraph, third person, in `~/Desktop/Adversaria Copilot Sources/adversaria/`. A retrieval simulation (keyword extraction + title-weighted ranking + best paragraph) over 34 questions was used to pick titles; six titles were changed so the intended file wins.
+- **Prevention:** before writing any copilot source material, run the question through the gate and the excerpt rule. Titles carry the question's words; never rely on headings inside the body; never put a metric's caveat in another paragraph. The gate, tier-score and dedup gaps are slice 2 items (`.recon/interview-copilot-20260908/CONTRACT-2-interview.md` §1). Also found on the way: CLAUDE.md, ARCHITECTURE.md and ADR-010 still described macOS capture as ScreenCaptureKit; it has been a Core Audio process tap since 2026-08-13 (`9589e8c`). Code wins over docs; the three were corrected.
+
+## 2026-09-05 — To-dos preview accepted; latent sizing/theme bug from Laghari theme gap; Codex notify installed
+
+- **Symptom:** To-dos lanes overflowed/budged and date badges wrapped with low contrast (1.04:1) on light theme; extra AI column worsened it.
+- **Root cause:** triage grid/metadata rules `60eaf61` (Jul 18) and date pastels `6512724` (Jun 22) were not converted when Laghari theme `de89f8f` (Aug 13) shipped — latent content-vs-container sizing + missing light-theme adaptation; exact first triggering task/release unproven.
+- **Fix:** scoped `src/prototype.css` fix (equal `minmax(0,1fr)`, container-width AI, wrapping, nonshrinking badges); fixture visual run 50/50 width/theme/AI passed (no overflow, contrast 5.06:1). Parent installed Codex prefs `~/.codex/config.toml` (`approval never`, `danger-full-access`, notify wrapper → Sky turn-ended + `task-complete.wav` `HCn94mNuICk` 7.11–7.84→0.73s PCM16 48kHz, byte-equal); 8 tests PASS, 3-key TOML preserved, backup 20260905T115736; new sessions needed; playback not claimed heard; one installer review round; no release/rebuild/commit/DB.
+- **Prevention:** when adding a theme, grep and convert all badge/pastel rules; keep behavioral tests plus a width/theme/AI fixture visual matrix.
+
+## 2026-09-04 — Windows CI failed one Rust test because a folder-excerpt heading used the OS path separator
+
+- **Symptom:** `workspace_runs::tests::folder_excerpt_prioritizes_root_readme` panicked on
+  `windows-latest` only (`Option::unwrap()` on `None` at `excerpt.find("## docs/guide.md")`);
+  macOS green. Blocked the 0.3.83 public sync (PR #30).
+- **Root cause:** the nested candidate's `relative_path` came from
+  `Path::strip_prefix(..).to_string_lossy()`, which renders `docs\guide.md` on Windows.
+- **Fix:** `b86e912` joins `components()` with `/` (the excerpt is LLM-facing text and
+  must be identical on every OS). Cherry-picked onto `release/0.3.83`; PR #31 green.
+- **Prevention:** never put an OS path into text that is compared or fed to a model;
+  render with `/` explicitly. Any test that greps a path in generated text is a
+  Windows-only failure waiting to happen.
+
+## 2026-09-04 — Three worker traps in one night (Antigravity silent death, Codex repo-wide `ruff format`, Muse dynamic-import hack)
+
+- **Symptom:** (a) the Rust worker on Antigravity exited within a minute with a 0-byte
+  result and 0-byte stderr, leaving 320 lines of partial edits; (b) the Python worker
+  on Codex reformatted 29 unrelated files; (c) the frontend worker on Muse replaced the
+  wrappers it needed with `import("../lib/tauri")` + `as unknown as {…}` casts to dodge
+  the existing `vi.mock` factories.
+- **Root cause:** (a) transient agy crash (a 30 s `stunt exec "reply ok"` probe passed
+  right after); (b) the spec listed `ruff format --check .` as a gate although the repo
+  only enforces `ruff check`, so the worker "fixed" the tree; (c) the spec did not say
+  how to satisfy the test mocks.
+- **Fix:** (a) `git checkout -- <its files>`, relaunch on agy after the probe; (b)
+  keep-list revert loop over `git diff --name-only python-service`, then one feedback
+  round to strip formatting hunks from the in-scope files; (c) one feedback round:
+  static imports + extend the mock factories.
+- **Prevention:** specs name the exact gates the repo enforces ("ruff check only, do
+  not run formatters"); frontend specs say "static imports; extend the `vi.mock`
+  factories"; launch workers detached (`nohup … &` + a Monitor on the result file)
+  because the Bash tool caps at 10 min; probe a backend before relaunching on it;
+  read every diff — each review round found a real bug (egress duplication, DB I/O
+  under a mutex, cloud model leaking into the local path, plaintext dev key file).
+
+## 2026-09-03 — A stunt worker reverted uncommitted doc edits in the shared checkout
+
+- **Symptom:** HANDOFF/STATUS/TODO edits made at 07:20–07:30 while two
+  workers were building in the same checkout were gone afterwards; `git
+  status` clean, no stash, no reflog entry.
+- **Root cause (inferred):** a worker ran `git checkout`/`git restore` to get
+  the "clean tree" its spec described, despite the "no git commands that
+  write" rule. Untracked files survived; tracked, uncommitted edits did not.
+- **Fix:** re-applied the edits from the session transcript.
+- **Prevention:** commit docs before launching workers, or write them after
+  the workers finish; never rely on uncommitted tracked edits surviving a
+  worker run. Specs should say "the tree may have uncommitted docs; leave
+  them" rather than "tree clean".
+
+## 2026-09-02 — Rust unit tests silently wrote into the founder's REAL meetings database
+
+- **Symptom:** after a worker's `cargo test` runs (and one of Claude's), the
+  installed app showed 33 new meetings — "Council Meeting", "Meeting 1…4",
+  "Host", "Long Meeting"… (ids 260–292) with 51 action items and 21 attachments.
+- **Root cause:** the new tests called `crate::storage::init_db(false)` and
+  `connect_for_sync()`, which open `db_path()` = `config::app_data_dir()/
+  meetings.db` — the live app-support DB. Nothing in `storage.rs` redirects
+  that path under `cfg(test)`; every existing test that needs a DB uses
+  `Connection::open_in_memory()` with `_on(conn, …)` helpers instead.
+- **Fix:** `_on` variants for the storage helpers the new code needs, a
+  `#[cfg(test)] in_memory_db()` that runs the real `create_tables`, tests
+  rewritten on it; the junk rows are deleted by id range (backup first:
+  `meetings.db.bak-pre-testrow-cleanup-*`).
+- **Prevention:** never call `init_db`/`connect*` from a test; run
+  `ADVERSARIA_DATA_DIR=$(mktemp -d) cargo test` so any stray path-based access
+  lands in a scratch dir; after a worker's cargo run, compare
+  `select max(id), count(*) from meetings` on the real DB (readable with
+  `sqlite3 "file:…/meetings.db?immutable=1"`).
+
+## 2026-09-02 — An attached previous meeting did nothing visible; the 4B notes model fabricates "Resolved"
+
+- **Symptom:** the founder attached a prior meeting while recording; the notes
+  showed "Follow-ups: None mentioned" and no sign the attachment existed.
+- **Root cause (two parts):** (1) `attached_context_for` sent the prior
+  meeting's summary with the prompt line "NEVER treat it as something said in
+  this meeting" — measured 0/6 follow-up mentions; enriching the context with
+  the open items changed nothing (0/3). (2) Once instructed, `qwen3.5:4b`
+  resolved explicitly-closed items but marked UNMENTIONED items "Resolved"
+  with invented evidence in ~50% of runs on an unrelated transcript, dropped
+  trailing items, and wrote the status after the item text
+  (`[P1] <item> — Done — "…"`) with elided quotes (`"… … and the hiring
+  managers"`). Probe: `.recon/recon-agy-context-probe.md` (git-excluded).
+- **Fix:** structured `prior_meetings` (open `action_items` only) + an explicit
+  `PRIOR MEETING FOLLOW-UP` instruction + `_ensure_followup_section`, which
+  rebuilds the section deterministically: one bullet per item in order,
+  status keyword found anywhere after a separator (last match wins),
+  Done/Discussed kept ONLY when every ellipsis-separated fragment of the
+  model's double-quoted evidence appears verbatim in the transcript, else
+  "Still open"; heading "Follow-up from <title>" (generic when the title
+  contains a to-do-extractor keyword). Verified on the real model: discussed
+  items → "Discussed" with a grounded quote; unrelated transcript → all
+  "Still open", zero fabrications.
+- **Prevention:** for anything a small local model asserts about the world
+  (done/not done, dates, names), require a verbatim quote and check it in
+  code; never let a "background only" instruction carry a feature the user is
+  supposed to see.
+
+## 2026-09-02 — The notary credential is unreadable while the Mac is LOCKED; retry instead of rebuilding
+
+- **Symptom:** the 0.3.83 release build passed the stage-0 credential
+  pre-flight (`notarytool history` listed 0.3.82 Accepted), spent ~35 min
+  freezing and signing, then stage 7 failed 4× with
+  `No Keychain password item found for profile: adversaria-notary`. A direct
+  `notarytool history` afterwards failed the same way, in 2 s, with no hang.
+- **Cause (confirmed by the recovery):** the founder had locked the screen and
+  walked away between pre-flight and stage 7 (`CGSSessionScreenIsLocked` was
+  set in `CGSessionCopyCurrentDictionary`). `notarytool` keeps the profile in
+  the data-protection keychain, whose items are unreadable while the session
+  is locked, and it reports that as a *missing* profile. Nothing was revoked:
+  a detached loop retrying every 2 min succeeded on try 132 at 07:33, the
+  moment the Mac was unlocked in the morning, and the identical DMG was
+  Accepted. This is the third distinct cause behind that one message (see the
+  2026-08-05 and 0.3.73/0.3.75 entries): revoked password, keychain flap
+  under load, and now a locked session.
+- **Fix that worked:** do not rebuild. Poll `xcrun notarytool history
+  --keychain-profile adversaria-notary` until it succeeds, then run the
+  script's stage-7 tail by hand on the intact DMG: `notarytool submit --wait`
+  → `stapler staple` → `stapler validate` → `spctl --assess --type open
+  --context context:primary-signature` → `node scripts/release-provenance.mjs
+  <dmg> provenance-beta.json <app.tar.gz> <app.tar.gz.sig>` → `cp` to the
+  stable name `Adversaria-macos-arm64.dmg` and `stapler validate` the copy.
+- **Prevention:** start a release freeze only when the Mac will stay unlocked
+  for the next hour, or run the build with the founder present at stage 7.
+  If the failure lands anyway, treat "No Keychain password item" as
+  "unreadable right now", check the lock state, and retry before touching
+  credentials.
+
 ## 2026-09-01 — "sherpa hosts Moonshine streaming" was a research assumption; the probe said otherwise
 
 **Symptom.** The 09-01 live-captions decision named Moonshine as the streaming
@@ -1405,3 +1553,9 @@ concluding it works. This is principle #3 in [CLAUDE.md](../CLAUDE.md).
 - **Prevention:** after a desktop suite, assert both the process and listening
   port are gone. A green WebDriver status is insufficient if it may belong to a
   previous run. Keep release signing and test-only ad-hoc signing separate.
+
+
+### Partial Python environment corruption can pass tests but break freezing (2026-09-05)
+- The local install build first failed because `mlx/lib/mlx.metallib` was absent. Reinstalling MLX repaired Metal, but PyInstaller then failed because `importlib.metadata` returned a None version for `charset_normalizer`; 15 distributions had missing metadata. The earlier mocked test suite had passed.
+- Preserve the broken service `.venv`, recreate it with `uv sync --project python-service --frozen --extra mlx --python /Users/mhlaghari/miniconda3/bin/python3.11`, verify metadata and a real MLX array operation, then rerun the canonical build. This repaired the environment without changing source or the lockfile. The separate Rapid runtime environment was intact. Frozen transcription and launch checks passed afterward.
+- Also move aside old duplicate `dist/* 2` trees before the clean freeze. For a local rebuild at an existing version, preserve the prior release bundle: the build script regenerates stable-named DMG/updater/provenance files even when public publishing is not requested.

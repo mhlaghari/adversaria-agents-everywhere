@@ -1,13 +1,35 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecordingCompanion } from "./RecordingCompanion";
 
-vi.mock("../lib/tauri", () => ({
+const tauriMocks = vi.hoisted(() => ({
   getAudioLevel: vi.fn().mockResolvedValue(0),
   pickContextFile: vi.fn().mockResolvedValue(null),
+  getFolderCopilotBrief: vi.fn().mockResolvedValue({
+    folder_id: 1,
+    folder_name: "Test",
+    copilot_mode: "no_ai",
+    copilot_web: false,
+    meeting_count: 0,
+    last_meeting: null,
+    open_items: [],
+    decisions: [],
+    follow_ups: [],
+  }),
+  setActionItemDone: vi.fn().mockResolvedValue(undefined),
+  hasCopilotApiKey: vi.fn().mockResolvedValue(false),
+  hasDeepSeekCopilotApiKey: vi.fn().mockResolvedValue(false),
+  copilotGetMode: vi.fn().mockResolvedValue("no_ai"),
+  copilotSetMode: vi.fn().mockResolvedValue("local"),
+  setFolderCopilotMode: vi.fn().mockResolvedValue(undefined),
+  setFolderCopilotWeb: vi.fn().mockResolvedValue(undefined),
+  copilotSetMicQuestions: vi.fn().mockResolvedValue(undefined),
+  setFolderProfile: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock("../lib/tauri", () => tauriMocks);
 
 const defaultProps = {
   variant: "balanced",
@@ -21,7 +43,46 @@ const defaultProps = {
   recentMeetings: [],
   onStop: vi.fn(),
   onBrowse: vi.fn(),
+  folders: [] as { folder: { id: number; name: string; color: string; instructions: string; created_at: string; updated_at: string; copilot_mode: "no_ai" | "local" | "claude" | "deepseek" }; meeting_count: number }[],
+  recordingFolderId: null as number | null,
+  onChangeRecordingFolder: vi.fn(),
+  copilotCards: [] as import("../types").CopilotCard[],
+  onForceCard: vi.fn(),
+  onCancel: vi.fn(),
+  onRetry: vi.fn(),
+  onNotice: vi.fn(),
 };
+
+beforeEach(() => {
+  tauriMocks.getFolderCopilotBrief.mockResolvedValue({
+    folder_id: 1,
+    folder_name: "Test",
+    copilot_mode: "no_ai",
+    copilot_web: false,
+    meeting_count: 0,
+    last_meeting: null,
+    open_items: [],
+    decisions: [],
+    follow_ups: [],
+  });
+});
+
+function cardFixture(overrides: Partial<import("../types").CopilotCard> = {}): import("../types").CopilotCard {
+  return {
+    id: 1,
+    session_id: "sess-1",
+    status: "answering",
+    provider_frozen: "claude",
+    question: "What did we decide about the API?",
+    asked_at_ms: Date.now(),
+    trigger: "auto",
+    passages: [
+      { source_kind: "meeting", source_id: "42", title: "Kickoff", text: "We chose GraphQL.", score: 0.9 },
+    ],
+    retrieval_ms: 42,
+    ...overrides,
+  };
+}
 
 describe("RecordingCompanion", () => {
   it("renders live transcript lines with speaker classes", () => {
@@ -161,5 +222,209 @@ describe("RecordingCompanion", () => {
       value: "42",
       label: "Northstar kickoff",
     });
+  });
+
+  it("explains what attaching a meeting does", () => {
+    render(<RecordingCompanion {...defaultProps} />);
+
+    expect(
+      screen.getByText(
+        "Attach a previous meeting and your notes will include a follow-up check on its open action items. Attached files are used as background.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("renders Notes and Last time tabs, switching hides notes textarea and shows folder select", async () => {
+    const user = userEvent.setup();
+    const folders = [
+      { folder: { id: 3, name: "Daily stand-up", color: "#fff", instructions: "", created_at: "", updated_at: "", copilot_mode: "no_ai" as const }, meeting_count: 2 },
+    ];
+    const onChangeRecordingFolder = vi.fn();
+    render(
+      <RecordingCompanion
+        {...defaultProps}
+        folders={folders}
+        recordingFolderId={null}
+        onChangeRecordingFolder={onChangeRecordingFolder}
+      />,
+    );
+
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Notes" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Last time" })).toHaveAttribute("aria-selected", "false");
+    // Notes tab visible
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Last time" }));
+
+    expect(screen.getByRole("tab", { name: "Last time" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Folder for this meeting")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Notes" }));
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  });
+
+  it("changing the folder select calls onChangeRecordingFolder", async () => {
+    const user = userEvent.setup();
+    const folders = [
+      { folder: { id: 3, name: "Daily stand-up", color: "#fff", instructions: "", created_at: "", updated_at: "", copilot_mode: "no_ai" as const }, meeting_count: 2 },
+      { folder: { id: 5, name: "Planning", color: "#fff", instructions: "", created_at: "", updated_at: "", copilot_mode: "no_ai" as const }, meeting_count: 0 },
+    ];
+    const onChangeRecordingFolder = vi.fn();
+    render(
+      <RecordingCompanion
+        {...defaultProps}
+        folders={folders}
+        recordingFolderId={null}
+        onChangeRecordingFolder={onChangeRecordingFolder}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Last time" }));
+    await user.selectOptions(screen.getByLabelText("Folder for this meeting"), "3");
+    expect(onChangeRecordingFolder).toHaveBeenCalledWith(3);
+  });
+
+  it("shows Filing into line in Notes tab when folder set", async () => {
+    const folders = [
+      { folder: { id: 3, name: "Daily stand-up", color: "#fff", instructions: "", created_at: "", updated_at: "", copilot_mode: "no_ai" as const }, meeting_count: 2 },
+    ];
+    render(
+      <RecordingCompanion
+        {...defaultProps}
+        folders={folders}
+        recordingFolderId={3}
+        onChangeRecordingFolder={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Filing into: Daily stand-up")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Last time" }));
+    expect(screen.queryByText("Filing into: Daily stand-up")).not.toBeInTheDocument();
+  });
+
+  it("does not show tabs in transcript variant", () => {
+    render(<RecordingCompanion {...defaultProps} variant="transcript" />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("renders Copilot tab and shows cards when active", async () => {
+    const user = userEvent.setup();
+    const card = cardFixture();
+    const { container } = render(<RecordingCompanion {...defaultProps} copilotCards={[card]} />);
+
+    expect(screen.getByRole("tab", { name: /Copilot/ })).toBeInTheDocument();
+    // question appears in strip even before tab, but full card passage hidden until Copilot tab active
+    expect(container.querySelector(".copilot-passage-text")).not.toBeInTheDocument();
+    // strip shows truncated question
+    expect(screen.getByTestId("copilot-answer-strip")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+
+    expect(screen.queryByText("We chose GraphQL.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Sources · 1" }));
+    expect(screen.getByText("We chose GraphQL.")).toBeInTheDocument();
+  });
+
+  it("badge shows 1 when card arrives while on Notes and clears after switching", async () => {
+    const user = userEvent.setup();
+    const card = cardFixture({ id: 5, question: "New question?", passages: [], status: "heard" });
+    const { rerender } = render(<RecordingCompanion {...defaultProps} copilotCards={[]} />);
+
+    expect(screen.queryByText("1")).not.toBeInTheDocument();
+
+    rerender(<RecordingCompanion {...defaultProps} copilotCards={[card]} />);
+
+    // badge visible while on Notes
+    expect(screen.getByText("1")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+
+    // badge cleared after entering Copilot tab
+    expect(screen.queryByText("1")).not.toBeInTheDocument();
+  });
+
+  it("pinning appends formatted text through onChange", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const card = cardFixture({ id: 7, question: "What is the deadline?", passages: [{ source_kind: "meeting", source_id: "10", title: "Kickoff", text: "Deadline is Friday.", score: 0.9 }], answer: { provider: "claude", status: "done", text: "", citations: [], provenance: [{ text: "Deadline is Friday.", label: "notes", passage_index: 0 }] } });
+    render(
+      <RecordingCompanion {...defaultProps} value="existing notes" onChange={onChange} copilotCards={[card]} />,
+    );
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+    await user.click(screen.getByRole("button", { name: "Pin card 7 to notes" }));
+
+    expect(onChange).toHaveBeenCalled();
+    const called = String(onChange.mock.calls[0][0]);
+    expect(called).toContain("Copilot:");
+    expect(called).toContain("What is the deadline?");
+    expect(called).toContain("[your notes]");
+  });
+
+  it("pinning with empty notes does not add leading newline", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const card = cardFixture({ id: 8, question: "Q?", passages: [{ source_kind: "meeting", source_id: "1", title: "M", text: "Answer.", score: 1 }], answer: { provider: "claude", status: "done", text: "", citations: [], provenance: [{ text: "Answer.", label: "notes", passage_index: 0 }] } });
+    render(<RecordingCompanion {...defaultProps} value="" onChange={onChange} copilotCards={[card]} />);
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+    await user.click(screen.getByRole("button", { name: "Pin card 8 to notes" }));
+    const called = String(onChange.mock.calls[0][0]);
+    expect(called.startsWith("Copilot:")).toBeTruthy();
+    expect(called).toContain("Q?");
+  });
+
+  it("pinning a sections card writes Copilot suggestion with Say and notes", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const card = cardFixture({
+      id: 9,
+      question: "What is status?",
+      passages: [{ source_kind: "meeting", source_id: "1", title: "Kickoff", text: "p", score: 1 }],
+      answer: {
+        provider: "claude",
+        status: "done",
+        text: "Hello world",
+        citations: [],
+        sections: {
+          say: ["Hello world."],
+          specifics: ["Spec line"],
+          notes: [{ passage_index: 0, quote: "exact quote", clause: "supports", text: "P1 | \"exact quote\" | supports" }],
+          next: "Follow?",
+        },
+      },
+    });
+    render(<RecordingCompanion {...defaultProps} value="existing" onChange={onChange} copilotCards={[card]} />);
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+    await user.click(screen.getByRole("button", { name: "Pin card 9 to notes" }));
+    const pinned = String(onChange.mock.calls[0][0]);
+    expect(pinned).toContain("Copilot suggestion:");
+    expect(pinned).toContain("Say:");
+    expect(pinned).toContain("- From your notes:");
+  });
+
+  it("shows Folder: Interviews when brief resolves Interviews", async () => {
+    tauriMocks.getFolderCopilotBrief.mockResolvedValue({
+      folder_id: 2,
+      folder_name: "Interviews",
+      copilot_mode: "no_ai",
+      copilot_web: false,
+      meeting_count: 0,
+      last_meeting: null,
+      open_items: [],
+      decisions: [],
+      follow_ups: [],
+    });
+    const user = userEvent.setup();
+    render(<RecordingCompanion {...defaultProps} recordingFolderId={2} />);
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+    expect(await screen.findByText("Folder: Interviews")).toBeVisible();
+  });
+
+  it("shows Folder: none without folder", async () => {
+    const user = userEvent.setup();
+    render(<RecordingCompanion {...defaultProps} recordingFolderId={null} />);
+    await user.click(screen.getByRole("tab", { name: /Copilot/ }));
+    expect(await screen.findByText("Folder: none")).toBeVisible();
   });
 });

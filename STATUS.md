@@ -5,6 +5,102 @@ every session. Deep detail lives in [`docs/`](./docs); this is the at-a-glance v
 
 > **Product:** Adversaria (privacy-first, bot-free, on-device meeting notetaker;
 > company = Laghari Labs). Windows + macOS/Apple-Silicon.
+> **2026-09-11 01:05 GST — 🟠 Companion layout de-noised (copilot focus in the narrow window, consent sentence collapsed, duplicate helper removed, tighter cards, stale notice auto-clears); tsc and 416 tests green, bundle 495.18 kB; four spec'd tests still owed; debug bundle rebuilding, app relaunch pending (founder recording).**
+> **2026-09-11 00:10 GST — 🟢 Study pack pushed to `mhlaghari/interview-dossiers` (`study/GOLDEN-QA.md` tiered checklist of 137 Q&A, `quick-cards.md`, `README.md`, commit `f7c859c`). Founder revises Tier 1 (42) today, mocks with Adversaria, then the meeting.**
+> **2026-09-10 23:30 GST — 🟢 Golden interview Q&A: 137 questions (53 actually asked by Wael, Dr. Yasser, Dr. Tamer; 66 not yet asked; 14 latency and cost; 4 audit additions), written by three workers, audited by Astra (127 corrections), rewritten, checked. Founder copy in the vault (`wiki/ideas/interview-golden-qa-2026-09.md`); copilot copy in `~/Desktop/Adversaria Copilot Sources/golden/` (15 files). Source root 111 files. Next: founder rehearsal, then commit.**
+> **2026-09-10 21:10 GST — 🟢 Three project dossiers in the Interviews folder sources: Adversaria 25, ERDC 33, TIS 30 files (95 total, limit 200), all in the one-paragraph-per-file format, fact-checked against the founder's code-verified dossiers, every likely interview question mapping to its file in simulation. Stale root `erdc-overview.md` archived. Next: founder starts a session (readiness line should show 95 sources, pack 3 projects) and rehearses on Local and DeepSeek Flash; then commit.**
+> **2026-09-09 00:45 GST — 🟢 SLICE 2 (interview copilot) BUILT and gated: Rust 491, Python 675, frontend 416 (494.56 kB). Answer shapes (STAR for experience), DeepSeek flash setting, local warm-up (first sentence 0.71 s right after warm-up), standing pack, card memory (follow-up "what is subject hash?" resolves), folder-first retrieval with acronyms, `Folder: … · N sources indexed` readiness line. Service restarted (PID 37763), debug app rebuilt 00:17 and running. Next: founder rehearsal on Local and DeepSeek Flash with the Interviews folder, then commit (not yet authorized). Deferred: speculative start, practice runner, close-after-NEXT.**
+> **2026-09-09 00:20 GST — 🟠 SLICE 2 (interview copilot) BUILDING: three workers running (Rust Codex gpt-6-astra, Python Antigravity, frontend Muse) on the pinned contract `.recon/interview-copilot-20260908/spec2-pinned.md` (answer shapes, DeepSeek flash + local warm-up, standing pack, card memory, evidence that wins, folder readiness). Practice runner and speculative start deferred to after the interview. Tree backed up; commit authorization pending. Next: gates, review, feedback round, debug bundle, founder rehearsal.**
+> **2026-09-08 23:40 GST — 🟢 Copilot scoped to interviews (founder decision); Adversaria technical dossier written (25 fact-checked files, one topic each, built for the folder-docs retrieval tier) and placed in `~/Desktop/Adversaria Copilot Sources/adversaria/`; slice 2 interview contract drafted with Astra (`.recon/interview-copilot-20260908/CONTRACT-2-interview.md`), awaiting go. No code changed; gates unchanged (Rust 473, Python 666, frontend 412). Next: founder refreshes or edits the folder profile, sets purpose, voice samples and DeepSeek default, starts one recording to index the dossier, then decides on slice 2 (evidence that wins, card memory, practice runner) before the interview.**
+> **2026-09-07 20:30 GST — 🟠 Slice 1.5 founder-tested with the Interviews folder (first person, ERDC-grounded, no leaks, 1 to 2 s); four defects fixed in slice 1.6 (folder fallback, CV-first profile + editable, AI-identity and mis-heard-term prompt rules, notes relevance floor, drop frames).** Gates: Rust 473, Python 666, frontend 412 (493.23 kB). Bundle rebuilding; next: swap app, founder re-test with DeepSeek + voice samples, then slice 2 (running summary, local judge, help hotkey, practice list) and slice 3 (gate harness).
+> **2026-09-07 08:20 GST — 🟠 Slice 1 founder-tested ("better, not quite there"): context leaks from unrelated projects with no folder, encyclopedic voice, chatbot follow-ups. SLICE 1.5 in progress: folder sources + scoped retrieval + folder profile + voice samples + spoken/relatable prompt.** Frontend (408 tests, 492.74 kB) and Python (665 tests) accepted; Rust worker running. Next: review Rust, rebuild debug bundle, set up the Interviews folder with the founder, native re-test.
+> **2026-09-07 01:40 GST — 🟠 Copilot rev 6 slice 1 BUILT (Codex GPT-6 Rust, Antigravity Python, Muse frontend), orchestrator-reviewed, gates green: Rust 437, Python 660, frontend 399, bundle 491.09 kB. Uncommitted on `feat/live-copilot-c`.** Contract/specs in `.recon/copilot-rev6/`. Service restarted on the new code; `qwen3.6:35b` streams the first say sentence in 0.28 s warm. Debug bundle rebuilt 01:14 and running (PID 79611); service PID 12193; `copilot_local_model` set to `qwen3.6:35b` and pre-loaded. Next: founder native test, then slice 2 (meeting layer, judge, voice anchors) and slice 3 (gate harness).
+> **2026-09-06 23:50 GST — 🟡 Copilot rev 6 direction approved: answer first, notes as evidence (concept board published, no code changed).** Board `.recon/copilot-answer-first-20260906/index.html`, artifact https://claude.ai/code/artifact/9a06f964-edd5-40a4-99a1-940249e60bf3. Cards rewritten once after the founder called v1 "AI sloppy" (say line ≤ 20 s, specifics only, numbers from notes or [blanks], voice samples); acceptance gate = founder rates 20 real interview questions ≥ 4/5. v3 adds the meeting layer (header at record start + on-device running summary + wider Local context) and makes Local first-class with its own model (today `qwen3.5:4b`; proposed `qwen3.6:35b-a3b`). Astra (GPT-6) brainstorm done 7 Sep (`.recon/copilot-answer-first-20260906/astra-brainstorm.md`): three sample say lines had puncturable claims, so the digit rule becomes a claim rule; say-line hold contract; hybrid detector; summary-to-cloud behind opt-in; local benchmark `qwen3.6:35b`; gate freezes evidence at question time. Board v4 published 7 Sep with the corrections folded in; summary-to-cloud, detector and local model decided. Next: rev 6 spec from board v4, then multi-worker delegation and the blind gate. Rev 5 remains the running code, below.
+> **2026-09-06 18:20 GST — 🟠 Realtime Copilot rev 5 answer feed + context-aware complete questions + manual DeepSeek retry correction implemented and open for native testing (uncommitted, `feat/live-copilot-c`).** Founder-approved artifact: `.recon/copilot-feed-concepts-20260906/index.html`. The Copilot tab is a flat streaming answer feed with collapsed Context and Sources. The sidecar marks forced cuts vs silence; Rust joins forced chunks into one speech turn and freezes the complete current question plus up to four recent Me/Them turns. The 18:11 screenshot exposed a completed No AI card being mistaken for in-progress work after switching to DeepSeek; manual Ask now permits a completed-question re-ask, active duplicate clicks remain blocked, and each row shows its frozen provider. Gates: frontend **383**, Rust **420 + 1 ignored**, Python **652 + 1 skipped**; build/bundle/security, fmt/clippy, Ruff and `git diff --check` green. Corrected debug app PID **21253** has one visible native window; current-tree service PID **74571** is fully ready. Installed `/Applications/Adversaria.app` remains unchanged. A DeepSeek-labelled native answer is the next test.
+> **2026-09-06 13:31 GST — 🟠 DeepSeek Realtime Copilot implemented and ready for a credentialed smoke test (uncommitted, `feat/live-copilot-c`).** AI · DeepSeek uses a separate keychain credential, fixed `https://api.deepseek.com` endpoint and `deepseek-v4-pro` model, bounded context disclosure, no web search, provider-frozen retries, distinct provenance/receipts, and pre-socket endpoint validation. Gates: frontend **381**, Rust **417 + 1 ignored**, Python **651 + 1 skipped**; TypeScript/build/bundle/security, fmt/clippy, and changed-file Ruff checks green. A debug bundle containing the work is running while the healthy service listens on `127.0.0.1:9876`; no real DeepSeek request has run because the key has not been entered. Installed `/Applications/Adversaria.app` remains unchanged.
+> **13:35 GST smoke correction:** the key is now saved. The first test was rejected locally because the manually launched service was older than the DeepSeek source changes; no provider call occurred. The service has been restarted from the current tree and is fully ready. Repeat the test to exercise DeepSeek itself.
+> **2026-09-05 23:21 GST — 🟠 Realtime Copilot v2 implemented; final audits have no open P0/P1 (uncommitted, `feat/live-copilot-c`).** Rev 3 as-built spec: `docs/superpowers/specs/2026-09-05-realtime-copilot-v2.md`. Consent-safe Retry, complete Claude disclosure, session UUIDs, latest-intent queue, registered Local endpoints, guarded terminals and companion UI are implemented; the expressive bubble headline is deferred. Automated gates: Frontend 41 files / **377 passed**, TypeScript/build/bundle/security clean; Rust **414 passed / 1 ignored**, fmt/clippy clean; Python **645 passed / 1 skipped**, Ruff clean; focused replay **25/25**. Regenerated E1a dry run has 0 executed/passed and live replay is an honest offline skip; no model was started. Operator runbook is ready at `.recon/realtime-copilot-20260905/native-runbook.md`. Installed app remains the earlier 0.3.83 build and does not contain these final v2 changes. E1b/E3/E4 remain `pending native capture`; deterministic native queue stress needs a delayed instrumented engine; E2 remains `pending credential`.
+> **2026-09-05 18:35 GST — ✅ Local build installed to `/Applications/Adversaria.app` and running.** Signed/notarized rebuild of uncommitted `feat/live-copilot-c`, version still 0.3.83; accepted To-dos CSS is now in the installed app alongside Copilot/export work. Native To-dos checked at one existing 1024×720 Laghari-theme viewport (stacked cards, readable single-line dates); transcriber, embeddings, live captions ready. DB 241 meetings / max id 298 unchanged, quick_check OK. Original release artifacts preserved separately; see [docs/HANDOFF.md](./docs/HANDOFF.md).
+
+## Next steps
+
+- In the open debug app, select **AI · DeepSeek**, speak one long context-dependent question that crosses live-caption lines, pause, click **Answer current question** once, and verify one fresh DeepSeek-labelled answer plus the exact Me/Them **Context** disclosure.
+- Founder option: run the native operator runbook (`.recon/realtime-copilot-20260905/native-runbook.md`) for **E1b** (AI Local) and **E3** (under load); configure Anthropic separately for E2 Claude.
+- Founder decides whether to commit and schedule a release build incorporating Realtime Copilot v2 and DeepSeek. Do not publish current local DMG/updater/provenance outputs as the original public 0.3.83 release; see [docs/HANDOFF.md](./docs/HANDOFF.md).
+
+> **Historical — 2026-09-05 To-dos preview accepted ("looks good"); Codex prefs installed, no release.** `src/prototype.css` fix preview was accepted; an installed rebuild was pending then, superseded by the 18:35 GST installation. History: grid `60eaf61` Jul 18 / pastels `6512724` Jun 22 → Laghari `de89f8f` Aug 13 gap caused latent sizing/theme bug; trigger unproven. Codex: `~/.codex/config.toml` `approval never`/`danger-full-access`, notify wrapper preserves Sky turn-ended + `task-complete.wav` (`HCn94mNuICk` 7.11–7.84→0.73s); parent verified 8 tests PASS, 3-key TOML preserved, wav byte-equal; backup 20260905T115736; new sessions were needed; no rebuild/commit/DB during that earlier session; one review round.
+
+## Historical board — Sep 4 / Sep 3 and earlier
+
+The dated board below records earlier state and plans; current state and Next steps above supersede it.
+
+> **09-04 (~05:00) — 🟠 SLICE C BUILT on `feat/live-copilot-c` (UNCOMMITTED; answer
+> stream + consent + keychain key + provenance + receipts; gates: tsc · vitest 328 ·
+> cargo 382 · pytest 586, all green on Claude's run) · 🚀 0.3.83 PUBLISHING: public
+> mirror merged at 0.3.83 (+ Windows path-separator fix `b86e912`), Windows CI
+> building, macOS artifacts verified; publish + manifest check pending. Live smoke
+> of the copilot and an Anthropic API key are the next founder steps.** Earlier:
+> **09-03 (evening) — 🔍 Competitor assessment: DoodleNote (doodlenote.ai)
+> researched by three agents; verdict + gap list in
+> [docs/DOODLENOTE_COMPARISON.md](./docs/DOODLENOTE_COMPARISON.md); six gap
+> items added to docs/TODO.md; no code changed; founder next step unchanged
+> (publish 0.3.83).** Earlier: **09-03 (09:40) — ✅ MERGED INTO MASTER `b6222c2` (not pushed): follow-up
+> check, Live Copilot A+B (no model), themed exports, `.adversaria`, review
+> fixes; gates green on master. Next for the founder: publish 0.3.83 (public
+> is 0.3.82), fix the junk-row cleanup range (260–292 only; 293–296 are real),
+> then 0.3.84 / slice C. HANDOFF top has the ordered list.** Earlier: ✅ second review round done: F3 formatting + F4
+> relevance floor / title strip landed (cargo 372, vitest 306). Founder
+> re-check → merge / 0.3.84 / junk-row cleanup / Claude creds decisions
+> pending.** Earlier: ✅ F3 formatting landed (`f714325`: compact tabs, safe
+> passage rendering, clamp + Show more; an unescaped-HTML render and a
+> worker's phantom tests were caught in review). F4 relevance floor still
+> building.** Earlier: 🛠 second review round in flight: compact tabs +
+> readable copilot passages (Muse; an unescaped-HTML render was caught in
+> review and is being redone as React nodes) and retrieval relevance floor +
+> title strip (Antigravity). Layout fix confirmed by the founder ("much
+> better"); copilot card works end-to-end. Earlier: ✅ Founder review fixes landed (`73fcf81` companion layout +
+> PDF-opens-print flow, `1f6f701` copilot force-card fallback); themed deck
+> and `.adversaria` export verified working; founder re-checking; merge /
+> 0.3.84 / junk-row cleanup / Claude creds pending.** Earlier: ✅ OVERNIGHT: exports built too (`39b6782`: theme-matched
+> slide/PDF, `.adversaria` document with uids/folders/open-with). Four
+> feature commits on `feat/live-copilot`, unmerged, dev stack running for
+> the founder's review (checklist in HANDOFF).** Earlier: ✅ LIVE COPILOT slices A+B COMMITTED on `feat/live-copilot`
+> (`34d04a2`, `23ab875`), gates green, dev stack left running for the
+> founder's morning review (Mac was locked → no UI drive). Next overnight:
+> theme-matched slide/PDF export + `.adversaria` bundle format (Codex map in
+> flight).** Earlier: 🛠 LIVE COPILOT slices A+B BUILDING on `feat/live-copilot`**
+> (founder: build in Adversaria; Interview Assist = second shell later).
+> Phase 1 in flight: Codex (Rust folder brief + copilot_mode) ∥ Muse
+> (companion tabs Notes · Last time, record-start folder). Phase 2 next:
+> Antigravity (detector + retrieval + copilot-card) ∥ frontend Copilot tab.
+> Follow-up feature committed `2818ee7` on its branch, unmerged. Earlier:
+> **09-02 (late) — 🧭 LIVE COPILOT direction locked (ADR-020), spec v1 +
+> visual done, scouts done.** Rail beside the transcript: your notes first
+> (deterministic), Claude + web after, every bullet labeled, "Not in your
+> notes" over invented experience; one consent switch No AI · AI Claude · AI
+> Local; local-first becomes reassurance, capability the headline. Spec:
+> `docs/superpowers/specs/2026-09-02-live-copilot-design.md`. Probe done:
+> confirmed caption 1.68 s, partial carries the question 0.5–2 s early,
+> retrieval 32 ms, local 4B/35B card 0.5/0.8 s → sub-second cards locally;
+> Claude unmeasured (no credentials on this Mac). All four scouts done; spec v1.2 carries
+> the code map (hook = after de-dup in `feed_live_source`, bounded worker;
+> consent enforced in Rust; folder identity at record start missing) and
+> the OSS verdict (fork none, GPL; Interview Assist = second thin shell).
+> Waiting on the founder's go + Claude credentials; local-under-load probe
+> still needed before the local model becomes the AI default.
+> **09-02 (evening) — ✅ BUILT + VERIFIED, UNCOMMITTED: attached previous
+> meeting → visible follow-up check (`feat/meeting-context-followup`).**
+> Founder attached a meeting while recording and the notes showed nothing.
+> Now: Rust sends the attached meetings' OPEN to-dos (`prior_meetings`),
+> Python renders a deterministic "Follow-up from <meeting>" section
+> (Done/Discussed only with a verbatim transcript quote, else Still open),
+> the note shows a "Context used" chip strip, the companion says what
+> attaching does. Recon (Antigravity probe + Muse survey + Antigravity code
+> map) → 3 specs → Antigravity ×2 + Muse built it; Claude verified every gate
+> (pytest 579 · vitest 253 · cargo 349, all green) and a real-model run.
+> ⚠️ The first Rust tests wrote 33 fixture meetings (ids 260–292) into the
+> founder's REAL DB — fixed (in-memory tests) but the rows need the founder's
+> delete (command in HANDOFF top). Bug triage: no live bugs in the backlog.
 > **08-27/28 — 🧭 WORKSPACES DESIGN RESET (locked, build deferred).** Founder
 > rejected the staffing-UI direction; workspace = artifact factory (NO repo
 > writes — parked), one workspace = one project, single-column screen, transfer
@@ -12,6 +108,25 @@ every session. Deep detail lives in [`docs/`](./docs); this is the at-a-glance v
 > Board (4th pass): https://claude.ai/code/artifact/3deb99ac-d9b7-481f-93be-d6ad82d85cd2
 > Build order agreed, NOT started ("we will do this later"). Full ledger of
 > locked decisions + Codex-verified findings in HANDOFF (08-27/28 block).
+> **09-02 (night → morning) — 🚢 0.3.83 CUT on master (signed; notarization
+> finishing automatically).** Founder: ship live captions now, no workspaces
+> (dev-gated anyway), redesign tomorrow. `preview/all2` → master `8bfb0ef`,
+> bump + CHANGELOG `95eebd1`, NOT pushed. Release build green through the
+> signed DMG (Developer ID, deep-verify OK, updater sig key = pinned verifier,
+> sherpa_onnx frozen). Stage 7 failed while the Mac was locked (data-protection
+> keychain unreadable; LESSONS 2026-09-02); a 12 h loop retried and the
+> credential came back at 07:33, submit in flight — HANDOFF top has the finish
+> checklist and the public-release steps (push/sync/Windows CI/publish await
+> the founder's word).
+> **Workspace redesign direction (founder + Claude, 09-02):** the local model
+> CURATES context (extractive, every passage cited, from meetings + vault +
+> folders) and Claude Code / Codex EXECUTES; the curated brief is the exact
+> payload that leaves the machine, shown before the run ("Will send: …") as the
+> per-run opt-in ADR-002 promised. Keep the two panes (founder: "the split
+> view … is good"); add the Bench lifecycle (bench strip, review sheet with
+> source-excerpt peek, one-sentence Redo, Accept only in the sheet + undo).
+> Open decision: two panes + Bench (Claude's recommendation) vs the Bench
+> board's single column. Slices W1–W4 + the curation-speed probe in TODO 09-02.
 > **09-01 (night) — ✅ LIVE CAPTIONS BUILT + VERIFIED + FOUNDER-SEEN LIVE +
 > COMMITTED on `feat/live-captions` and MERGED into `preview/all2` (founder
 > authorized; not pushed, not on master).**

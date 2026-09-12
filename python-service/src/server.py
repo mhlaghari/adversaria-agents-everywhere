@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import signal
 import sys
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
+from . import copilot_answer
 from .live import (
     LiveCaptionSession,
     MoonshinePartialEngine,
@@ -22,6 +27,9 @@ from .live import (
     trim_repetition_loop,
 )
 from .models import (
+    CopilotAnswerRequest,
+    CopilotWarmRequest,
+    CopilotWarmResponse,
     DraftRequest,
     GenerateTemplateRequest,
     GenerateTemplateResponse,
@@ -37,6 +45,7 @@ from .models import (
     ModelDownloadStatus,
     SummarizeRequest,
     SummarizeResponse,
+    validate_copilot_deepseek_endpoint,
     TemplateInfo,
     TemplateSaveRequest,
     TranscribeChunkRequest,
@@ -55,8 +64,10 @@ from .model_setup import (
 )
 from .summarizer import (
     OllamaSummarizer,
+    configure_local_openai_base_url,
     configure_local_ollama_host,
     default_llm_backend,
+    validate_copilot_local_endpoint,
 )
 from .transcriber import (
     MlxWhisperTranscriber,
@@ -166,7 +177,9 @@ def _build_live_transcriber(
             live = MlxWhisperTranscriber(
                 model_repo=_LIVE_WHISPER_REPO, drop_no_speech=True
             )
-            _warm_transcriber(live)  # runs on the warm-up thread, which holds _WHISPER_LOCK
+            _warm_transcriber(
+                live
+            )  # runs on the warm-up thread, which holds _WHISPER_LOCK
             logger.info("Live-caption model ready (%s).", _LIVE_WHISPER_REPO)
             return live
     except Exception:
@@ -422,9 +435,7 @@ async def lifespan(app: FastAPI):
     ).start()
     # Backend is platform-resolved: Rapid-MLX (openai) on Apple Silicon, Ollama
     # elsewhere — unless LLM_BACKEND is set explicitly.
-    _summarizer = OllamaSummarizer(
-        backend=default_llm_backend(), host=_OLLAMA_HOST
-    )
+    _summarizer = OllamaSummarizer(backend=default_llm_backend(), host=_OLLAMA_HOST)
     _embedder = OllamaEmbedder(host=_OLLAMA_HOST)
     logger.info("ML service singletons initialized.")
     yield
@@ -441,6 +452,24 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def copilot_request_validation_error(
+    request: Request, exc: RequestValidationError
+):
+    """Keep Copilot request-shape failures on its stable, non-sensitive 400 contract."""
+    if request.url.path == "/copilot_answer_stream":
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Invalid Copilot request"},
+        )
+    if request.url.path == "/copilot/warm":
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "ms": 0, "detail": "Invalid Copilot warm request"},
+        )
+    return await request_validation_exception_handler(request, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -518,18 +547,32 @@ def _embedding_health(ollama_available: bool) -> tuple[str, str]:
 
 @app.post("/setup/llm_host")
 def setup_llm_host(request: LlmHostRequest) -> dict[str, str]:
-    """Register the app-owned loopback Ollama host for chat and embeddings."""
+    """Register app-owned local LLM endpoints without accepting credentials."""
     global _OLLAMA_HOST
+    response: dict[str, str] = {}
     try:
-        normalized = configure_local_ollama_host(request.ollama_host)
+        normalized_ollama = (
+            configure_local_ollama_host(request.ollama_host)
+            if request.ollama_host is not None
+            else None
+        )
+        normalized_openai = (
+            configure_local_openai_base_url(request.local_openai_base_url)
+            if request.local_openai_base_url is not None
+            else None
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _OLLAMA_HOST = normalized
-    if _summarizer is not None:
-        _summarizer.set_ollama_host(normalized)
-    if _embedder is not None:
-        _embedder.set_default_host(normalized)
-    return {"ollama_host": normalized}
+    if normalized_ollama is not None:
+        _OLLAMA_HOST = normalized_ollama
+        if _summarizer is not None:
+            _summarizer.set_ollama_host(normalized_ollama)
+        if _embedder is not None:
+            _embedder.set_default_host(normalized_ollama)
+        response["ollama_host"] = normalized_ollama
+    if normalized_openai is not None:
+        response["local_openai_base_url"] = normalized_openai
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +727,96 @@ async def draft_stream(request: DraftRequest) -> StreamingResponse:
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+@app.post("/copilot_answer_stream")
+async def copilot_answer_stream(
+    payload: CopilotAnswerRequest,
+    request: Request,
+) -> StreamingResponse:
+    """Stream a live Copilot answer and its citation metadata as SSE frames."""
+    if payload.provider == "claude" and not (payload.api_key or "").strip():
+        raise HTTPException(status_code=400, detail="Anthropic API key missing")
+    if payload.provider in {"local", "deepseek"} and _summarizer is None:
+        raise HTTPException(status_code=503, detail="Summarizer not initialized")
+    if payload.provider == "local":
+        try:
+            validate_copilot_local_endpoint(payload.llm_base_url, payload.llm_api_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if payload.provider == "deepseek":
+        try:
+            validate_copilot_deepseek_endpoint(payload.llm_base_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    control = copilot_answer.StreamControl()
+    iterator = iter(copilot_answer.stream_frames(payload, _summarizer, control))
+    return StreamingResponse(
+        _disconnect_aware_frames(request, iterator, control),
+        media_type="text/event-stream",
+    )
+
+
+@app.post("/copilot/warm", response_model=CopilotWarmResponse)
+async def copilot_warm(payload: CopilotWarmRequest) -> CopilotWarmResponse:
+    """Perform one minimal chat completion against the local backend to keep it warm."""
+    if _summarizer is None:
+        return CopilotWarmResponse(ok=False, ms=0, detail="Summarizer not initialized")
+    try:
+        ok, ms, detail = await asyncio.to_thread(
+            _summarizer.copilot_warm,
+            payload.model,
+            payload.llm_base_url,
+            payload.llm_api_key,
+        )
+        return CopilotWarmResponse(ok=ok, ms=ms, detail=detail)
+    except Exception as exc:
+        return CopilotWarmResponse(ok=False, ms=0, detail=str(exc))
+
+
+def _next_stream_frame(iterator: object) -> tuple[bool, str | None]:
+    try:
+        return True, next(iterator)  # type: ignore[arg-type]
+    except StopIteration:
+        return False, None
+
+
+async def _disconnect_aware_frames(
+    request: Request, iterator: object, control: copilot_answer.StreamControl
+):
+    """Consume sync model I/O off-loop and always close it on disconnect."""
+    next_frame: asyncio.Task[tuple[bool, str | None]] | None = None
+    try:
+        while True:
+            if await request.is_disconnected():
+                return
+            next_frame = asyncio.create_task(
+                run_in_threadpool(_next_stream_frame, iterator)
+            )
+            while not next_frame.done():
+                await asyncio.wait({next_frame}, timeout=0.05)
+                if await request.is_disconnected():
+                    await run_in_threadpool(control.close)
+                    with suppress(asyncio.CancelledError, Exception):
+                        await next_frame
+                    return
+            available, value = await next_frame
+            if not available:
+                return
+            if value is not None:
+                yield value
+    finally:
+        await run_in_threadpool(control.close)
+        if next_frame is not None and not next_frame.done():
+            with suppress(asyncio.CancelledError, Exception):
+                await next_frame
+        close = getattr(iterator, "close", None)
+        if close is not None:
+            try:
+                await run_in_threadpool(close)
+            except Exception:
+                pass
+
+
 # ---------------------------------------------------------------------------
 # Embed
 # ---------------------------------------------------------------------------
@@ -775,7 +908,9 @@ def _detect_cohere_language(
                 detected = language.lower().replace("_", "-").split("-", 1)[0]
                 via = "whisper"
             else:
-                logger.info("Cohere language detection returned empty; using fallback en.")
+                logger.info(
+                    "Cohere language detection returned empty; using fallback en."
+                )
         except Exception:
             logger.info("Cohere language detection failed; using fallback en.")
         finally:
@@ -809,7 +944,8 @@ def transcribe(request: TranscribeRequest) -> TranscribeResponse:
     if request.single_file:
         if audio_path is None:
             raise HTTPException(
-                status_code=400, detail="audio_path is required for a single-file import"
+                status_code=400,
+                detail="audio_path is required for a single-file import",
             )
         t = _require_transcriber()
         try:
@@ -899,9 +1035,7 @@ def transcribe(request: TranscribeRequest) -> TranscribeResponse:
                 t = resident
             else:
                 try:
-                    t = get_cohere_transcriber(
-                        whisper_repo_for(request.whisper_model)
-                    )
+                    t = get_cohere_transcriber(whisper_repo_for(request.whisper_model))
                     t.language = detected
                 except RuntimeError:
                     if resident is None:
@@ -994,8 +1128,12 @@ def setup_model_download(request: ModelDownloadRequest) -> ModelDownloadStatus:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/setup/model_download/{profile_id}/reset", response_model=ModelDownloadStatus)
-def setup_model_download_reset(profile_id: str, force: bool = False) -> ModelDownloadStatus:
+@app.post(
+    "/setup/model_download/{profile_id}/reset", response_model=ModelDownloadStatus
+)
+def setup_model_download_reset(
+    profile_id: str, force: bool = False
+) -> ModelDownloadStatus:
     """Clear stuck incomplete blobs and reset status so user can retry (Phase 1.3)."""
     try:
         from .model_setup import reset_model_download
@@ -1069,15 +1207,16 @@ def live_feed(request: LiveFeedRequest) -> LiveFeedResponse:
     try:
         session = _live_sessions.setdefault(request.source, LiveCaptionSession())
         session.ingest(request.session, request.audio_path)
-        utterances, watermark = session.pending_utterances()
+        utterances, watermark = session.pending_utterance_events()
         captions: list[str] = []
+        caption_boundaries: list[str] = []
         if (
             utterances
             and _live_transcriber is not None
             and _WHISPER_LOCK.acquire(blocking=False)
         ):
             try:
-                for start, end in utterances:
+                for start, end, boundary in utterances:
                     wav = session.write_utterance_wav(start, end)
                     try:
                         result = _live_transcriber.transcribe(str(wav))
@@ -1093,6 +1232,7 @@ def live_feed(request: LiveFeedRequest) -> LiveFeedResponse:
                             and not is_repetition_loop(text)
                         ):
                             captions.append(text)
+                            caption_boundaries.append(boundary)
                     finally:
                         wav.unlink(missing_ok=True)
                 session.advance(watermark)
@@ -1107,7 +1247,11 @@ def live_feed(request: LiveFeedRequest) -> LiveFeedResponse:
                 partial = trim_repetition_loop(_partial_engine.decode(tail))
                 if is_filler_hallucination(partial) or is_repetition_loop(partial):
                     partial = ""
-        return LiveFeedResponse(captions=captions, partial=partial)
+        return LiveFeedResponse(
+            captions=captions,
+            caption_boundaries=caption_boundaries,
+            partial=partial,
+        )
     except Exception:
         logger.exception("Live feed failed (non-fatal)")
         return LiveFeedResponse()
@@ -1162,6 +1306,7 @@ def summarize(request: SummarizeRequest) -> SummarizeResponse:
             auto_template=request.auto_template,
             viewer_label=request.viewer_label,
             meeting_date=request.meeting_date,
+            prior_meetings=request.prior_meetings,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

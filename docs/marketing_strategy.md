@@ -172,17 +172,17 @@ decomposing.
 
 Based on STRATEGY.md's own analysis (which is credible) and market research:
 
-| Dimension | Granola | Meetily | Fireflies/Otter | Adversaria |
-|-----------|---------|---------|-----------------|------------|
-| **Privacy** | Partial (audio deleted, transcripts to cloud) | Full (local) | None (all cloud) | **Full (local)** |
-| **Setup ease** | One-click install | OSS, needs setup | One-click | Complex (LLM server + model) |
-| **Speaker diarization** | Yes | **Yes** | Yes | **No** |
-| **Real-time transcription** | Yes | No | Yes | MVP preview only |
-| **Task board / kanban** | No | No | Limited | **Foundation built** |
-| **Cross-meeting RAG** | No | No | Some | **Yes (FTS5)** |
-| **Price** | Free (funded) | Free (OSS) | Freemium → $10-30/mo | Free (currently) |
-| **Platform** | macOS | Cross-platform | Web + apps | Windows + macOS |
-| **Collaboration** | Yes | No | Yes | No |
+| Dimension | Granola | Meetily | Fireflies/Otter | DoodleNote | Adversaria |
+|-----------|---------|---------|-----------------|------------|------------|
+| **Privacy** | Partial (audio deleted, transcripts to cloud) | Full (local) | None (all cloud) | Full (local; sync optional, not E2E) | **Full (local)** |
+| **Setup ease** | One-click install | OSS, needs setup | One-click | One-click, first-run wizard | Complex (LLM server + model) |
+| **Speaker diarization** | Yes | **Yes** | Yes | No (You/Them only) | **Yes (anonymous, remote channel)** |
+| **Real-time transcription** | Yes | No | Yes | Yes (English only) | Yes (two-tier live captions) |
+| **Task board / kanban** | No | No | Limited | No | **Foundation built** |
+| **Cross-meeting RAG** | No | No | Some | Basic (stuffs recent notes, no embeddings) | **Yes (FTS5)** |
+| **Price** | Free (funded) | Free (OSS) | Freemium → $10-30/mo | Free, Sync $10/user/mo | Free (currently) |
+| **Platform** | macOS | Cross-platform | Web + apps | macOS (Apple Silicon) + Windows beta | Windows + macOS |
+| **Collaboration** | Yes | No | Yes | Yes (paid Sync tier) | No |
 
 **Your differentiation is real but narrow.** If you match on diarization (even
 feature-flagged), improve onboarding, and ship the Kanban board, you have a
@@ -196,6 +196,14 @@ genuinely differentiated product for the compliance niche.
 - **Meetily** — OSS, Rust, ~12.5k GitHub stars. "#1 self-hosted Granola
   alternative." Ships speaker diarization you lack. Your strategy and agentic
   vision beat them; their feature completeness beats you today.
+- **DoodleNote** — Onyx Dev Labs (Fort Worth, one dev + Cursor agents), launched
+  2026-07-05, MIT, Electron. Our exact pitch ("AI meeting notes without the
+  bot", "Nothing leaves your computer"), free local app plus $10/mo Sync tier.
+  Beats us on call detection with auto-stop, Microsoft 365 calendar, shipped
+  Windows beta, rich editor, in-app MCP connect, sync/share/team (both ship an
+  MCP server; ours also writes tasks back). English-only and no diarization,
+  which are our two loudest strengths. Full assessment:
+  [DOODLENOTE_COMPARISON.md](./DOODLENOTE_COMPARISON.md) (2026-09-03).
 - **Fireflies.ai / Otter.ai** — Cloud-native, bot-joins-call model. Dominant in
   enterprise. Privacy-conscious buyers are actively leaving them (lawsuits are
   tailwinds for you).

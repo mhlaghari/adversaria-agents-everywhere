@@ -29,6 +29,7 @@ sys.modules["faster_whisper"] = _fake_whisper
 # Reload src.transcriber to pick up the mock (addresses ordering issues when
 # test_server.py also mocks faster_whisper at the module level)
 import src.transcriber  # noqa: E402
+
 importlib.reload(src.transcriber)
 
 from src.transcriber import WhisperTranscriber  # noqa: E402
@@ -38,7 +39,9 @@ from src.models import TranscribeResponse  # noqa: E402
 @pytest.fixture
 def transcriber() -> WhisperTranscriber:
     """Create a WhisperTranscriber with mocked faster-whisper model."""
-    return WhisperTranscriber(model_size="large-v3", device="cuda", compute_type="int8_float16")
+    return WhisperTranscriber(
+        model_size="large-v3", device="cuda", compute_type="int8_float16"
+    )
 
 
 @pytest.fixture
@@ -172,7 +175,9 @@ class TestTranscribeResponseTurns:
         for turn in result.turns:
             assert turn.speaker == "Them"
 
-    def test_turns_empty_for_empty_segments(self, transcriber: WhisperTranscriber) -> None:
+    def test_turns_empty_for_empty_segments(
+        self, transcriber: WhisperTranscriber
+    ) -> None:
         """No segments → no turns."""
         transcriber.model.transcribe.return_value = ([], _fake_info)
         # Create a minimal WAV so transcribe doesn't fail on file check
