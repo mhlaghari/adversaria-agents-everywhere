@@ -1,7 +1,7 @@
 # STATUS (hackathon repo)
 
-> **Current — 2026-09-12 15:43 GST: README updates pushed through `d76292e`;
-> previous memory refresh pushed as `cbfc46f`. No new slide version created.
+> **Current — 2026-09-12 15:44 GST: README updates pushed through `d76292e`;
+> previous memory refresh pushed as `bffc03d`. Existing slide links shared; no new slide version created.
 > Latest founder deadline: 16:30 GST.**
 
 | Work | Status | Evidence / next step |
@@ -10,7 +10,7 @@
 | CLI built with Codex; OpenRouter and Exa AI sponsor credits | Pushed | README wording and integration table; `d76292e`; whitespace checks passed |
 | Automatic Exa and AI Tinkerers answer fix | Pushed and installed | `3b4df85`; 75 CLI tests and live synthetic/public regression checks passed |
 | One-sentence pain-point slide | Brainstorming | Suggested: "Every meeting leaves me with hours of follow-up, while my own projects wait." No deck edits made |
-| Existing Laghari Labs presentation | Ready | Eight reviewed slides; PowerPoint, PDF, offline HTML and notes |
+| Existing Laghari Labs presentation | Ready; links shared | Eight reviewed slides: [PDF](marketing/adversaria-story/output/adversaria-story.pdf), [PowerPoint](marketing/adversaria-story/output/adversaria-story-v3.pptx); offline HTML and notes also available |
 | Separate CLI workspace dashboard changes | In progress; uncommitted and unverified here | Dashboard imports workspace/task navigation and background review controls; store revision method and dashboard tests added. Coordinate with owning worker, then verify before publishing |
 | Demo rehearsal and submission | Next | Rehearse against the latest stated 16:30 GST deadline; a repo push does not submit the entry |
 
