@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "meeting": {
+    "title": "1:1 — Omar (infra costs & hiring)",
+    "recorded_at": "2026-07-15T11:00:00+00:00",
+    "duration_seconds": 129.4,
+    "template_used": "one-on-one",
+    "transcript": "Me: Two topics from me: the CI bill and whether it's time to hire. What's on your list?\nThem: Same two, honestly. The CI bill doubled since we added the integration suite. Eight hundred a month and climbing.\nMe: What's the alternative look like?\nThem: A self-hosted runner on a single beefy box. My back-of-envelope says it pays for itself in three months, but I want to benchmark before we commit.\nMe: Do the benchmark this week — if the numbers hold, migrate before month end. Now, hiring.\nThem: I'm the bottleneck on backend work. Between infra, reviews, and the sync fixes, feature work is getting maybe a third of my week.\nMe: That matches what I see. I think we open a mid-level backend role rather than senior — someone you can grow, at a salary we can sustain.\nThem: Mid-level works if they're strong on databases. I can carry the architecture if they can own features end to end.\nMe: I'll write the job description tomorrow and route it through the usual channels. You'll do the technical screens.\nThem: Happy to. And thanks for moving on this before I burned out rather than after.",
+    "transcript_turns": [
+      {
+        "speaker": "Me",
+        "text": "Two topics from me: the CI bill and whether it's time to hire. What's on your list?",
+        "start": 4.0,
+        "end": 11.08
+      },
+      {
+        "speaker": "Them",
+        "text": "Same two, honestly. The CI bill doubled since we added the integration suite. Eight hundred a month and climbing.",
+        "start": 12.28,
+        "end": 20.2
+      },
+      {
+        "speaker": "Me",
+        "text": "What's the alternative look like?",
+        "start": 22.3,
+        "end": 25.8
+      },
+      {
+        "speaker": "Them",
+        "text": "A self-hosted runner on a single beefy box. My back-of-envelope says it pays for itself in three months, but I want to benchmark before we commit.",
+        "start": 27.0,
+        "end": 37.83
+      },
+      {
+        "speaker": "Me",
+        "text": "Do the benchmark this week — if the numbers hold, migrate before month end. Now, hiring.",
+        "start": 39.93,
+        "end": 46.6
+      },
+      {
+        "speaker": "Them",
+        "text": "I'm the bottleneck on backend work. Between infra, reviews, and the sync fixes, feature work is getting maybe a third of my week.",
+        "start": 47.8,
+        "end": 57.38
+      },
+      {
+        "speaker": "Me",
+        "text": "That matches what I see. I think we open a mid-level backend role rather than senior — someone you can grow, at a salary we can sustain.",
+        "start": 59.48,
+        "end": 70.73
+      },
+      {
+        "speaker": "Them",
+        "text": "Mid-level works if they're strong on databases. I can carry the architecture if they can own features end to end.",
+        "start": 71.93,
+        "end": 80.27
+      },
+      {
+        "speaker": "Me",
+        "text": "I'll write the job description tomorrow and route it through the usual channels. You'll do the technical screens.",
+        "start": 82.37,
+        "end": 89.87
+      },
+      {
+        "speaker": "Them",
+        "text": "Happy to. And thanks for moving on this before I burned out rather than after.",
+        "start": 91.07,
+        "end": 97.32
+      }
+    ],
+    "summary": "### Overview\n1:1 with Omar covering infrastructure costs and hiring. CI spend has doubled to\n~$800/month since the integration suite landed; a self-hosted runner likely\npays for itself in three months. Omar is the backend bottleneck — feature work\ngets roughly a third of his week.\n\n### Key points\n- CI bill: ~$800/month and climbing; self-hosted runner is the candidate fix.\n- Omar's split: infra + reviews + sync fixes crowd out feature work.\n- Role shape: mid-level backend, strong on databases, grows under Omar.\n\n### Decisions\n- Benchmark the self-hosted runner this week; migrate before month end if the\n  numbers hold.\n- Open a mid-level backend engineering role.\n\n### Action items\n- Benchmark self-hosted runner costs (Omar)\n- Write the backend role job description (Hamza)",
+    "attendees": [
+      "Omar Farouk"
+    ],
+    "user_notes": "",
+    "link": "",
+    "tags": [
+      {
+        "label": "1:1",
+        "color": "green"
+      }
+    ],
+    "action_items": [
+      {
+        "ord": 0,
+        "text": "Benchmark self-hosted runner costs",
+        "assignee": "Omar Farouk",
+        "due": "2026-07-18",
+        "done": false
+      },
+      {
+        "ord": 1,
+        "text": "Write the job description for the backend role",
+        "assignee": "Me",
+        "due": "2026-07-19",
+        "done": false
+      }
+    ]
+  }
+}

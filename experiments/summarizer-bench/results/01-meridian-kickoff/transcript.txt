@@ -1,0 +1,11 @@
+Me: Thanks for making time, both of you. Goal today is to agree on the shape of the intake pilot: which clinics, what success looks like, and the privacy constraints.
+Them: From our side the driver is simple. The front-desk team spends about forty minutes per patient on intake paperwork, and half of it is retyping things the patient already told us.
+Me: Understood. Our proposal is to pilot the intake assistant in a limited setting first rather than a big-bang rollout. Two clinics, six weeks, then we review.
+Them: Two clinics works. Riverside and the Oakwood branch are the best candidates — motivated staff, similar patient volume.
+Me: On the privacy side, everything runs on-site. No patient audio or text leaves the clinic network, which should make David's review much easier.
+Them: That's the headline I needed. I'll still run the full security questionnaire, but on-site processing removes the biggest blocker we had with the last vendor.
+Me: For success metrics I'd suggest time-per-intake and staff satisfaction, measured in week one as a baseline and again in week six.
+Them: Add error rates on transferred data. That's what burned us before — fast but wrong is worse than slow.
+Me: Agreed, three metrics then. I'll draft the pilot scope document this week and send the security questionnaire answers along with it.
+Them: I'll get you the current intake workflow diagrams so your team sees what the desk staff actually do today. Warts and all.
+Me: Perfect. Let's reconvene once David has reviewed the questionnaire. Thanks, both.

@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "meeting": {
+    "title": "Atlas launch — marketing sync",
+    "recorded_at": "2026-07-17T08:00:00+00:00",
+    "duration_seconds": 135.4,
+    "template_used": "general",
+    "transcript": "Me: Let's lock the launch sequence. My instinct is first week of August — the onboarding v2 work lands next week and I don't want to launch on the old flow.\nThem: First week of August works. It gives me two weeks for assets. The critical-path item is the demo video — everything else derives from it.\nMe: Then I record it this week. Ninety seconds, real product, no mockups.\nThem: Exactly. From that one recording I can cut the social clips, the landing-page loop, and the launch-post GIF.\nMe: What does the social calendar look like?\nThem: Two weeks: teaser clips, a founder thread on why we built it, then the launch-day push. I'll draft the full calendar once I have the video.\nMe: Landing page — the hero copy still says 'organize your team's work'. It's true and it's forgettable.\nThem: Rewrite it around the digest, per the retention data. 'Your team's week, summarized every Monday' is the direction I'd test.\nMe: Take that direction. I'll rewrite the hero this week, you draft the calendar, and we review both on Monday.\nThem: One more — the Buildlog podcast slot came through for launch week. I booked it this morning.\nMe: Excellent. That's our third-party credibility beat sorted.",
+    "transcript_turns": [
+      {
+        "speaker": "Me",
+        "text": "Let's lock the launch sequence. My instinct is first week of August — the onboarding v2 work lands next week and I don't want to launch on the old flow.",
+        "start": 4.0,
+        "end": 16.5
+      },
+      {
+        "speaker": "Them",
+        "text": "First week of August works. It gives me two weeks for assets. The critical-path item is the demo video — everything else derives from it.",
+        "start": 17.7,
+        "end": 28.12
+      },
+      {
+        "speaker": "Me",
+        "text": "Then I record it this week. Ninety seconds, real product, no mockups.",
+        "start": 30.22,
+        "end": 35.22
+      },
+      {
+        "speaker": "Them",
+        "text": "Exactly. From that one recording I can cut the social clips, the landing-page loop, and the launch-post GIF.",
+        "start": 36.42,
+        "end": 43.92
+      },
+      {
+        "speaker": "Me",
+        "text": "What does the social calendar look like?",
+        "start": 46.02,
+        "end": 49.52
+      },
+      {
+        "speaker": "Them",
+        "text": "Two weeks: teaser clips, a founder thread on why we built it, then the launch-day push. I'll draft the full calendar once I have the video.",
+        "start": 50.72,
+        "end": 61.55
+      },
+      {
+        "speaker": "Me",
+        "text": "Landing page — the hero copy still says 'organize your team's work'. It's true and it's forgettable.",
+        "start": 63.65,
+        "end": 70.73
+      },
+      {
+        "speaker": "Them",
+        "text": "Rewrite it around the digest, per the retention data. 'Your team's week, summarized every Monday' is the direction I'd test.",
+        "start": 71.93,
+        "end": 80.27
+      },
+      {
+        "speaker": "Me",
+        "text": "Take that direction. I'll rewrite the hero this week, you draft the calendar, and we review both on Monday.",
+        "start": 82.37,
+        "end": 90.28
+      },
+      {
+        "speaker": "Them",
+        "text": "One more — the Buildlog podcast slot came through for launch week. I booked it this morning.",
+        "start": 91.48,
+        "end": 98.57
+      },
+      {
+        "speaker": "Me",
+        "text": "Excellent. That's our third-party credibility beat sorted.",
+        "start": 100.67,
+        "end": 104.17
+      }
+    ],
+    "summary": "### Overview\nLaunch planning with Lina. Launch week set for the first week of August,\ngated on onboarding v2 landing first. The demo video is the critical-path\nasset — social clips, the landing loop, and the launch GIF all derive from it.\nBuildlog podcast booked for launch week.\n\n### Key points\n- Demo video first; every other asset is cut from it.\n- Two-week social arc: teasers → founder thread → launch-day push.\n- Hero copy pivots to the digest (\"your team's week, summarized every Monday\")\n  per the retention data.\n\n### Decisions\n- Launch week: first week of August.\n- Demo video recorded before the landing-page refresh.\n- Hero copy direction: lead with the weekly digest.\n\n### Action items\n- Record the product demo video (Hamza)\n- Draft the launch-week social calendar (Lina)\n- Refresh landing page hero copy (Hamza)\n- Book podcast slot with Buildlog (Lina — done)",
+    "attendees": [
+      "Lina Aziz"
+    ],
+    "user_notes": "",
+    "link": "",
+    "tags": [
+      {
+        "label": "Marketing",
+        "color": "orange"
+      },
+      {
+        "label": "Atlas",
+        "color": "blue"
+      }
+    ],
+    "action_items": [
+      {
+        "ord": 0,
+        "text": "Record the product demo video",
+        "assignee": "Me",
+        "due": "2026-07-18",
+        "done": false
+      },
+      {
+        "ord": 1,
+        "text": "Draft the launch-week social calendar",
+        "assignee": "Lina Aziz",
+        "due": "2026-07-21",
+        "done": false
+      },
+      {
+        "ord": 2,
+        "text": "Refresh landing page hero copy",
+        "assignee": "Me",
+        "due": "",
+        "done": false
+      },
+      {
+        "ord": 3,
+        "text": "Book podcast slot with Buildlog",
+        "assignee": "Lina Aziz",
+        "due": "",
+        "done": true
+      }
+    ]
+  }
+}

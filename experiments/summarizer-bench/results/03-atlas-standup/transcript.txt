@@ -1,0 +1,9 @@
+Me: Quick round. Omar, where are we on the sync-retry bug?
+Them: Root-caused it yesterday. The backoff resets on every reconnect, so flaky networks hammer the server. Fix is a persisted backoff window — I'll have it in review today.
+Me: Good. That one's been generating most of our support email. Sarah?
+Them: Component audit is done, forty-two components, a dozen candidates for deletion. I need a second pair of eyes before I start removing things.
+Me: Send it to me, I'll review this week. On my side, settings search is ready for beta — I want it out this sprint so we get feedback before the launch build.
+Them: Any blockers from the beta group on the last drop?
+Me: Nothing major. Two people asked for keyboard shortcuts documentation, which is telling us they're becoming power users. Good sign.
+Them: I can fold a shortcuts sheet into the help panel when I do the empty-state work.
+Me: Nice. Priorities stand: retry fix first, then analytics on onboarding step two once the Figma lands.

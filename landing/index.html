@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Adversaria — the AI meeting notetaker that sends nothing home</title>
+  <meta name="description" content="Adversaria records, transcribes, and summarizes your meetings entirely on your own machine. No bot joins the call, nothing is uploaded, and the audio is deleted after transcription. Join the private beta." />
+  <meta name="theme-color" content="#080b11" />
+  <link rel="canonical" href="https://lagharilabs.io/" />
+
+  <!-- Social sharing (Open Graph + Twitter). Create og.png (1200x630) and drop it
+       in this folder before launch — see DEPLOY.md. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Adversaria" />
+  <meta property="og:title" content="Local-first AI meeting notes on your machine" />
+  <meta property="og:description" content="No bot joins the call. Nothing is uploaded. The recording is deleted the moment it's transcribed. Private beta for macOS." />
+  <meta property="og:url" content="https://lagharilabs.io/" />
+  <meta property="og:image" content="https://lagharilabs.io/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Local-first AI meeting notes on your machine" />
+  <meta name="twitter:description" content="No bot. No cloud. No upload. Private beta for macOS — join the waitlist." />
+  <meta name="twitter:image" content="https://lagharilabs.io/og.png" />
+
+  <!-- Favicon: inline azure lock, no external request -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080b11'/%3E%3Cpath d='M11 15v-2a5 5 0 0 1 10 0v2' fill='none' stroke='%2324a0ed' stroke-width='2'/%3E%3Crect x='9' y='15' width='14' height='10' rx='2' fill='%2324a0ed'/%3E%3C/svg%3E" />
+
+  <style>
+  :root {
+    --ink: #080b11;
+    --ink-2: #0c111a;
+    --panel: #10151e;
+    --panel-2: #141b26;
+    --line: #1f2833;
+    --line-soft: #171f2a;
+    --text: #e7edf4;
+    --muted: #8a96a6;
+    --muted-2: #5f6b7a;
+    --azure: #24a0ed;
+    --azure-hi: #59baf5;
+    --azure-dim: rgba(36, 160, 237, 0.14);
+    --azure-glow: rgba(36, 160, 237, 0.35);
+    --ok: #3fb98c;
+
+    --serif: "Hoefler Text", "Iowan Old Style", "Palatino", Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Menlo", "Cascadia Code", monospace;
+
+    --measure: 62ch;
+    --wrap: 1080px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 600px at 78% -8%, rgba(36, 160, 237, 0.10), transparent 60%),
+      radial-gradient(900px 500px at 5% 4%, rgba(36, 160, 237, 0.05), transparent 55%),
+      var(--ink);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap { width: min(var(--wrap), 92vw); margin-inline: auto; }
+  a { color: inherit; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  .serif { font-family: var(--serif); font-weight: 400; }
+  .it { font-style: italic; }
+  .azure { color: var(--azure); }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    backdrop-filter: blur(14px);
+    background: rgba(8, 11, 17, 0.72);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .topbar-inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-mark { font-family: var(--serif); font-style: italic; font-size: 1.5rem; color: var(--azure); letter-spacing: 0.01em; }
+  .brand-sub { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted-2); }
+  .nav { display: flex; align-items: center; gap: 26px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color .15s; }
+  .nav a:hover { color: var(--text); }
+
+  .btn {
+    font: inherit; cursor: pointer; border: 0; border-radius: 10px;
+    padding: 11px 18px; font-weight: 600; font-size: 0.94rem;
+    background: var(--azure); color: #04121e;
+    transition: transform .12s ease, box-shadow .2s ease, background .2s;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 8px 24px -10px var(--azure-glow);
+  }
+  .btn:hover { background: var(--azure-hi); transform: translateY(-1px); }
+  .btn[disabled] { opacity: .55; cursor: default; transform: none; }
+  .nav .btn { padding: 9px 15px; }
+
+  :focus-visible { outline: 2px solid var(--azure-hi); outline-offset: 2px; border-radius: 8px; }
+
+  .hero { padding: clamp(56px, 9vw, 104px) 0 clamp(40px, 6vw, 72px); }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: clamp(32px, 5vw, 72px); align-items: center; }
+  .hero h1 { font-family: var(--serif); font-size: clamp(2.4rem, 5.2vw, 4.1rem); line-height: 1.04; letter-spacing: -0.01em; margin: 18px 0 0; }
+  .hero h1 .it { color: var(--azure); }
+  .lede { color: var(--muted); font-size: 1.12rem; line-height: 1.62; max-width: 46ch; margin: 20px 0 0; }
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  .waitlist { margin-top: 30px; max-width: 460px; }
+  .field { display: flex; gap: 9px; background: var(--panel); border: 1px solid var(--line); border-radius: 13px; padding: 7px; transition: border-color .2s, box-shadow .2s; }
+  .field:focus-within { border-color: var(--azure); box-shadow: 0 0 0 4px var(--azure-dim); }
+  .field input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font: inherit; padding: 8px 10px; }
+  .field input::placeholder { color: var(--muted-2); }
+  .field input:focus { outline: none; }
+  .waitlist-note { margin: 12px 2px 0; font-size: 0.82rem; color: var(--muted-2); display: flex; align-items: center; gap: 8px; }
+  .dot-ok { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); flex: none; }
+  .form-msg { margin: 12px 2px 0; font-size: 0.9rem; min-height: 1.2em; }
+  .form-msg.ok { color: var(--ok); }
+  .form-msg.err { color: #f0a0b4; }
+
+  .receipts { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 8px 10px; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+  .receipt { border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; display: inline-flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.015); }
+  .receipt .tick { color: var(--ok); }
+
+  .device { position: relative; border-radius: 20px; padding: 26px; background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); box-shadow: 0 40px 90px -50px #000, 0 0 0 1px rgba(36,160,237,0.06); }
+  .device::before { content: ""; position: absolute; inset: 11px; border-radius: 13px; border: 1.5px dashed rgba(36, 160, 237, 0.42); pointer-events: none; }
+  .device-tag { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 0.63rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); background: var(--ink); border: 1px solid var(--line); padding: 4px 12px; border-radius: 999px; white-space: nowrap; }
+  .device-machine { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-2); display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+  .device-machine .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--azure); box-shadow: 0 0 0 0 var(--azure-glow); animation: pulse 2.4s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--azure-glow); } 70% { box-shadow: 0 0 0 12px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .flow { display: flex; flex-direction: column; gap: 10px; }
+  .flow-step { display: flex; align-items: center; gap: 13px; background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: 12px; padding: 13px 15px; }
+  .flow-ic { width: 34px; height: 34px; flex: none; border-radius: 9px; background: var(--azure-dim); color: var(--azure); display: grid; place-items: center; }
+  .flow-ic svg { width: 18px; height: 18px; }
+  .flow-t { font-size: 0.92rem; font-weight: 600; }
+  .flow-d { font-size: 0.78rem; color: var(--muted); }
+  .flow-arrow { text-align: center; color: var(--azure); font-size: 0.8rem; line-height: 0; margin: -3px 0; }
+  .device-foot { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+  .device-foot .blocked { color: var(--ok); display: inline-flex; align-items: center; gap: 7px; }
+  .device-foot .zero { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  section { padding: clamp(56px, 8vw, 96px) 0; }
+  .sec-head { max-width: 60ch; margin-bottom: clamp(30px, 4vw, 52px); }
+  .sec-head h2 { font-family: var(--serif); font-size: clamp(1.9rem, 3.6vw, 2.9rem); line-height: 1.1; letter-spacing: -0.01em; margin-top: 12px; }
+  .sec-head p { color: var(--muted); font-size: 1.06rem; margin: 16px 0 0; max-width: var(--measure); }
+  .divider { height: 1px; background: var(--line-soft); border: 0; margin: 0; }
+
+  .versus { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .col { border: 1px solid var(--line); border-radius: 16px; padding: 26px; background: var(--panel); }
+  .col.them { background: linear-gradient(180deg, rgba(255,90,120,0.03), transparent); }
+  .col.us { border-color: rgba(36,160,237,0.4); box-shadow: 0 0 0 1px rgba(36,160,237,0.14), 0 30px 70px -50px var(--azure-glow); }
+  .col h3 { font-size: 1.06rem; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+  .col .kicker { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-2); }
+  .col ul { list-style: none; margin: 20px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+  .col li { display: flex; gap: 12px; align-items: flex-start; font-size: 0.95rem; line-height: 1.5; color: var(--muted); }
+  .col.us li { color: var(--text); }
+  .mk { flex: none; margin-top: 2px; width: 17px; height: 17px; }
+  .mk.no { color: #e0708a; }
+  .mk.yes { color: var(--ok); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: s; }
+  .step { border: 1px solid var(--line); border-radius: 16px; padding: 26px 24px; background: var(--panel); position: relative; }
+  .step .n { counter-increment: s; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.12em; color: var(--azure); }
+  .step .n::before { content: "0" counter(s) " — "; }
+  .step h3 { font-size: 1.14rem; margin: 14px 0 8px; }
+  .step p { color: var(--muted); font-size: 0.92rem; margin: 0; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .feat { border: 1px solid var(--line); border-radius: 14px; padding: 22px; background: var(--panel); transition: border-color .2s, transform .15s; }
+  .feat:hover { border-color: rgba(36,160,237,0.4); transform: translateY(-2px); }
+  .feat-ic { width: 36px; height: 36px; border-radius: 9px; background: var(--azure-dim); color: var(--azure); display: grid; place-items: center; margin-bottom: 15px; }
+  .feat-ic svg { width: 19px; height: 19px; }
+  .feat h3 { font-size: 1rem; margin-bottom: 7px; }
+  .feat p { color: var(--muted); font-size: 0.87rem; margin: 0; line-height: 1.5; }
+
+  .faq { display: grid; gap: 0; border-top: 1px solid var(--line-soft); }
+  details { border-bottom: 1px solid var(--line-soft); }
+  summary { cursor: pointer; list-style: none; padding: 22px 4px; display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: 1.08rem; font-weight: 500; }
+  summary::-webkit-details-marker { display: none; }
+  summary .plus { color: var(--azure); font-family: var(--mono); font-size: 1.3rem; transition: transform .2s; flex: none; }
+  details[open] summary .plus { transform: rotate(45deg); }
+  .faq-a { padding: 0 4px 24px; color: var(--muted); max-width: var(--measure); line-height: 1.62; }
+
+  .cta { text-align: center; border: 1px solid rgba(36,160,237,0.3); border-radius: 24px; padding: clamp(44px, 6vw, 76px) 28px; background: radial-gradient(600px 300px at 50% -20%, rgba(36,160,237,0.16), transparent 65%), var(--panel); }
+  .cta h2 { font-family: var(--serif); font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.08; }
+  .cta p { color: var(--muted); max-width: 48ch; margin: 16px auto 0; }
+  .cta .waitlist { margin-inline: auto; }
+  .cta .receipts { justify-content: center; }
+
+  footer { border-top: 1px solid var(--line-soft); padding: 40px 0 56px; }
+  .foot-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  .foot-tag { font-family: var(--serif); font-style: italic; color: var(--muted); }
+  .foot-meta { font-family: var(--mono); font-size: 0.72rem; color: var(--muted-2); letter-spacing: 0.06em; }
+
+  @media (max-width: 860px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .device { order: -1; }
+    .versus, .steps, .features { grid-template-columns: 1fr; }
+    .nav a:not(.btn) { display: none; }
+  }
+  @media (max-width: 520px) {
+    body { font-size: 16px; }
+    .field { flex-direction: column; }
+    .field .btn { width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">Adversaria</span>
+      <span class="brand-sub">Laghari&nbsp;Labs</span>
+    </div>
+    <nav class="nav">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#faq">Privacy</a>
+      <a href="#join" class="btn">Join the waitlist</a>
+    </nav>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Private beta · macOS Apple Silicon</span>
+      <h1 class="serif">AI meeting notes that<br><span class="it">stay on your machine.</span></h1>
+      <p class="lede">
+        Adversaria records, transcribes, and summarizes your meetings <strong>entirely
+        on your own computer</strong>. No bot joins the call. No audio or transcript is
+        uploaded in local mode. The recording is deleted after successful transcription.
+      </p>
+
+      <!-- WAITLIST FORM — replace the Formspree endpoint below (see DEPLOY.md) -->
+      <form class="waitlist" id="join" action="https://formspree.io/f/REPLACE_WITH_FORM_ID" method="POST" novalidate>
+        <div class="field">
+          <input type="email" id="email" name="email" placeholder="you@work.com" autocomplete="email" aria-label="Email address" required />
+          <button class="btn" type="submit">Join the waitlist</button>
+        </div>
+        <p class="form-msg" id="formMsg" role="status" aria-live="polite"></p>
+        <p class="waitlist-note"><span class="dot-ok"></span> Beta invites go out in waves. We'll only email you about Adversaria — nothing else.</p>
+      </form>
+
+      <div class="receipts" aria-label="What Adversaria does not do">
+        <span class="receipt"><span class="tick">✓</span> no bot in the call</span>
+        <span class="receipt"><span class="tick">✓</span> audio deleted after transcription</span>
+        <span class="receipt"><span class="tick">✓</span> 0 bytes of meeting content uploaded in local mode</span>
+      </div>
+    </div>
+
+    <div class="device" role="img" aria-label="Diagram: in local mode, audio, transcript, and notes stay inside your machine.">
+      <span class="device-tag">Local mode · meeting content stays inside</span>
+      <div class="device-machine"><span class="pulse"></span> MacBook · on-device</div>
+
+      <div class="flow">
+        <div class="flow-step">
+          <span class="flow-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          </span>
+          <div><div class="flow-t">Captured</div><div class="flow-d">System audio + your mic — no bot dials in</div></div>
+        </div>
+        <div class="flow-arrow" aria-hidden="true">↓</div>
+        <div class="flow-step">
+          <span class="flow-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="15" y2="12"/><line x1="4" y1="17" x2="18" y2="17"/></svg>
+          </span>
+          <div><div class="flow-t">Transcribed on-device</div><div class="flow-d">Whisper (MLX) — speaker-labeled, then audio deleted</div></div>
+        </div>
+        <div class="flow-arrow" aria-hidden="true">↓</div>
+        <div class="flow-step">
+          <span class="flow-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+          </span>
+          <div><div class="flow-t">Notes + to-dos</div><div class="flow-d">The default local LLM writes the summary on-device</div></div>
+        </div>
+      </div>
+
+      <div class="device-foot">
+        <span class="blocked" aria-hidden="true">⃠ meeting-content upload</span>
+        <span class="zero" aria-label="zero meeting-content bytes uploaded">0.00 KB</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<hr class="divider" />
+
+<section id="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Why it's different</span>
+      <h2 class="serif">Cloud notetakers send your conversations somewhere.<br>Adversaria doesn't.</h2>
+      <p>Granola deletes the audio — but ships your transcript to OpenAI or Anthropic on AWS. Otter and Fireflies send a bot into the call and keep everything. Adversaria's privacy isn't a setting you toggle; it's the architecture.</p>
+    </div>
+
+    <div class="versus">
+      <div class="col them">
+        <span class="kicker">Bot-based cloud tools</span>
+        <h3>Otter · Fireflies · Granola</h3>
+        <ul>
+          <li><svg class="mk no" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> A bot joins your call — everyone sees it recording</li>
+          <li><svg class="mk no" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Audio and transcripts leave your device for their servers</li>
+          <li><svg class="mk no" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Your conversations sit on infrastructure you don't control</li>
+          <li><svg class="mk no" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> A breach or subpoena reaches every meeting at once</li>
+        </ul>
+      </div>
+      <div class="col us">
+        <span class="kicker azure">On-device by design</span>
+        <h3><span class="serif it" style="font-size:1.2rem; color:var(--azure)">Adversaria</span></h3>
+        <ul>
+          <li><svg class="mk yes" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> No bot — it captures the audio your Mac already plays and hears</li>
+          <li><svg class="mk yes" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Transcription and summaries run on your own hardware</li>
+          <li><svg class="mk yes" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> The recording is deleted the moment it's transcribed</li>
+          <li><svg class="mk yes" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Nothing to breach in the cloud — because nothing is in the cloud</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">How it works</span>
+      <h2 class="serif">Three steps. All of them local.</h2>
+      <p>You start a recording, have your meeting, and stop. Everything from the audio to the finished notes happens inside your computer.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="n">Record</span>
+        <h3>No bot dials in</h3>
+        <p>Adversaria captures your system audio and your microphone directly — the people on the call never see a recorder join. A live transcript scrolls as you talk.</p>
+      </div>
+      <div class="step">
+        <span class="n">Transcribe</span>
+        <h3>On-device, speaker-labeled</h3>
+        <p>Whisper runs on your Apple Silicon GPU and splits the conversation into <em>you</em>, <em>them</em>, and each remote speaker. Then the audio file is deleted.</p>
+      </div>
+      <div class="step">
+        <span class="n">Summarize</span>
+        <h3>A local model writes it up</h3>
+        <p>A local LLM turns the transcript into structured notes, decisions, and action items — picking the right template for the kind of meeting it was.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">What you get</span>
+      <h2 class="serif">A full meeting workspace — with nothing phoning home.</h2>
+      <p>Privacy is the floor, not the ceiling. Everything below is computed from your own data on your own machine.</p>
+    </div>
+    <div class="features">
+      <div class="feat">
+        <span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M15 20a6 6 0 0 1 6-4"/></svg></span>
+        <h3>Speaker-labeled transcripts</h3>
+        <p>Me / Them, plus on-device diarization of the remote side into Speaker 1, 2, 3 — with [MM:SS] timestamps per turn.</p>
+      </div>
+      <div class="feat">
+        <span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H4z"/><path d="M9 20h6M8 16v4M16 16v4"/></svg></span>
+        <h3>Smart note templates</h3>
+        <p>It detects a 1:1, a brainstorm, an interview, or a watched video and picks the matching template. Your manual choice always wins.</p>
+      </div>
+      <div class="feat">
+        <span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><rect x="7" y="11" width="3" height="8"/><rect x="12" y="7" width="3" height="12"/><rect x="17" y="14" width="3" height="5"/></svg></span>
+        <h3>Meeting insights</h3>
+        <p>Talk-time share, speaking pace, filler-word rate, interruptions, longest monologue — computed with zero AI calls.</p>
+      </div>
+      <div class="feat">
+        <span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></span>
+        <h3>To-dos &amp; weekly recap</h3>
+        <p>Action items from every meeting in one list — with due dates, assignees, a Today view, and a Mon–Sun digest.</p>
+      </div>
+      <div class="feat">
+        <span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span>
+        <h3>Ask across meetings</h3>
+        <p>Cross-meeting Q&amp;A over your whole history, retrieved locally and answered by your local model — with the meetings it drew from.</p>
+      </div>
+      <div class="feat">
+        <span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="17" r="2.5"/><path d="M8 7.5 10.5 15M15.5 8.5 13 15"/></svg></span>
+        <h3>Knowledge graph &amp; export</h3>
+        <p>An interactive map of your meetings, people, and topics. Export to slides, Markdown, or a portable bundle — on your terms.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Straight answers</span>
+      <h2 class="serif">The privacy questions, answered plainly.</h2>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>Does anything I say get uploaded? <span class="plus" aria-hidden="true">+</span></summary>
+        <p class="faq-a">No. Recording, transcription, and summarization all run on your own machine. Adversaria doesn't need network access to do its job, and it doesn't send your audio, transcripts, or notes anywhere.</p>
+      </details>
+      <details>
+        <summary>Does a bot join my meeting? <span class="plus" aria-hidden="true">+</span></summary>
+        <p class="faq-a">Never. Adversaria records the audio your computer already plays and the mic it already hears. No participant is added to the call, so there's nothing for others to see or consent-gate.</p>
+      </details>
+      <details>
+        <summary>What happens to the recording? <span class="plus" aria-hidden="true">+</span></summary>
+        <p class="faq-a">It's deleted as soon as it's transcribed. If a transcription ever fails, the audio is kept on-device and clearly marked so you can retry it — it's never silently uploaded to "fix" it.</p>
+      </details>
+      <details>
+        <summary>What do I need to run it? <span class="plus" aria-hidden="true">+</span></summary>
+        <p class="faq-a">A Mac with Apple Silicon (M-series) and a local language model for the summaries — the transcription engine is bundled. The private beta is macOS-first; a Windows build is next. Setup guidance ships with your invite.</p>
+      </details>
+      <details>
+        <summary>Who makes it? <span class="plus" aria-hidden="true">+</span></summary>
+        <p class="faq-a">Adversaria is built by Laghari Labs. It runs on open, on-device models — Whisper for speech and a local LLM for the writing — so the intelligence lives on your hardware, not behind someone's API.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cta">
+      <span class="eyebrow">The waitlist</span>
+      <h2 class="serif">Be first on the private beta.</h2>
+      <p>We're rolling out invites in small waves for macOS (Apple Silicon), Windows to follow. Leave your email and we'll reach out when a spot opens.</p>
+      <!-- WAITLIST FORM — same Formspree endpoint as the hero form -->
+      <form class="waitlist" id="join2" action="https://formspree.io/f/REPLACE_WITH_FORM_ID" method="POST" novalidate>
+        <div class="field">
+          <input type="email" id="email2" name="email" placeholder="you@work.com" autocomplete="email" aria-label="Email address" required />
+          <button class="btn" type="submit">Request an invite</button>
+        </div>
+        <p class="form-msg" id="formMsg2" role="status" aria-live="polite"></p>
+      </form>
+      <div class="receipts">
+        <span class="receipt"><span class="tick">✓</span> meeting content stays local by default</span>
+        <span class="receipt"><span class="tick">✓</span> no bot · no automatic cloud fallback</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div class="brand">
+      <span class="brand-mark">Adversaria</span>
+      <span class="foot-tag">— local-first meeting intelligence.</span>
+    </div>
+    <div class="foot-meta">A LAGHARI LABS PRODUCT · macOS &amp; Windows · © 2026</div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var PLACEHOLDER = "REPLACE_WITH_FORM_ID";
+    function wire(formId, inputId, msgId) {
+      var form = document.getElementById(formId);
+      if (!form) return;
+      var input = document.getElementById(inputId);
+      var msg = document.getElementById(msgId);
+      var btn = form.querySelector("button");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var val = (input.value || "").trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+          msg.textContent = "Please enter a valid email address.";
+          msg.className = "form-msg err";
+          input.focus();
+          return;
+        }
+        if (form.action.indexOf(PLACEHOLDER) !== -1) {
+          msg.textContent = "Waitlist isn't connected yet — add your Formspree ID (see DEPLOY.md).";
+          msg.className = "form-msg err";
+          return;
+        }
+        msg.textContent = "Joining…";
+        msg.className = "form-msg";
+        btn.disabled = true;
+        fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { Accept: "application/json" }
+        }).then(function (res) {
+          if (res.ok) {
+            msg.textContent = "You're on the list — we'll email you when a beta spot opens.";
+            msg.className = "form-msg ok";
+            input.disabled = true;
+          } else {
+            return res.json().then(function (d) {
+              throw new Error((d && d.errors && d.errors[0] && d.errors[0].message) || "error");
+            });
+          }
+        }).catch(function () {
+          msg.textContent = "Something went wrong — please try again, or email hello@lagharilabs.io.";
+          msg.className = "form-msg err";
+          btn.disabled = false;
+        });
+      });
+    }
+    wire("join", "email", "formMsg");
+    wire("join2", "email2", "formMsg2");
+  })();
+</script>
+
+</body>
+</html>

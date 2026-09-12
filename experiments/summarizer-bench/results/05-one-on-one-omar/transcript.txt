@@ -1,0 +1,10 @@
+Me: Two topics from me: the CI bill and whether it's time to hire. What's on your list?
+Them: Same two, honestly. The CI bill doubled since we added the integration suite. Eight hundred a month and climbing.
+Me: What's the alternative look like?
+Them: A self-hosted runner on a single beefy box. My back-of-envelope says it pays for itself in three months, but I want to benchmark before we commit.
+Me: Do the benchmark this week — if the numbers hold, migrate before month end. Now, hiring.
+Them: I'm the bottleneck on backend work. Between infra, reviews, and the sync fixes, feature work is getting maybe a third of my week.
+Me: That matches what I see. I think we open a mid-level backend role rather than senior — someone you can grow, at a salary we can sustain.
+Them: Mid-level works if they're strong on databases. I can carry the architecture if they can own features end to end.
+Me: I'll write the job description tomorrow and route it through the usual channels. You'll do the technical screens.
+Them: Happy to. And thanks for moving on this before I burned out rather than after.

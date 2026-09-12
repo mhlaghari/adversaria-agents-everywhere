@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "meeting": {
+    "title": "Meridian Health — security & compliance review",
+    "recorded_at": "2026-07-14T07:00:00+00:00",
+    "duration_seconds": 140.9,
+    "template_used": "client-meeting",
+    "transcript": "Me: David, you've had the questionnaire answers for a week — where did we land?\nThem: Mostly green. The on-site processing story holds up. Three open threads: single sign-on, audit logging, and a written statement on data boundaries.\nMe: Take them in order. For SSO, you're an Azure shop, right?\nThem: Azure AD across the org. If your app can do SSO against it, that closes the account-sprawl concern from compliance.\nMe: We can integrate against Azure AD. I'll confirm the exact protocol details in the audit-log spec I owe you anyway.\nThem: On audit logs — compliance wants exportable logs, monthly at minimum. Who accessed which patient record and when.\nMe: Monthly export is straightforward. I'll write up the format and retention so your compliance team can sign off on paper rather than on a demo.\nThem: Last one is the data-boundary statement. We need it in writing that nothing leaves the clinic LAN — our board asks for that sentence specifically.\nMe: You'll have it in the SOC 2 readiness summary. It's an honest sentence for us, which is why this partnership works.\nThem: Then from my side we're nearly there. Get me those two documents and I'll set up staging tenant access for your team in parallel.\nMe: Deal. Documents by Wednesday, and we aim to unblock the pilot start next week.",
+    "transcript_turns": [
+      {
+        "speaker": "Me",
+        "text": "David, you've had the questionnaire answers for a week — where did we land?",
+        "start": 4.0,
+        "end": 9.83
+      },
+      {
+        "speaker": "Them",
+        "text": "Mostly green. The on-site processing story holds up. Three open threads: single sign-on, audit logging, and a written statement on data boundaries.",
+        "start": 11.03,
+        "end": 20.2
+      },
+      {
+        "speaker": "Me",
+        "text": "Take them in order. For SSO, you're an Azure shop, right?",
+        "start": 22.3,
+        "end": 26.88
+      },
+      {
+        "speaker": "Them",
+        "text": "Azure AD across the org. If your app can do SSO against it, that closes the account-sprawl concern from compliance.",
+        "start": 28.08,
+        "end": 36.42
+      },
+      {
+        "speaker": "Me",
+        "text": "We can integrate against Azure AD. I'll confirm the exact protocol details in the audit-log spec I owe you anyway.",
+        "start": 38.52,
+        "end": 46.85
+      },
+      {
+        "speaker": "Them",
+        "text": "On audit logs — compliance wants exportable logs, monthly at minimum. Who accessed which patient record and when.",
+        "start": 48.05,
+        "end": 55.55
+      },
+      {
+        "speaker": "Me",
+        "text": "Monthly export is straightforward. I'll write up the format and retention so your compliance team can sign off on paper rather than on a demo.",
+        "start": 57.65,
+        "end": 68.07
+      },
+      {
+        "speaker": "Them",
+        "text": "Last one is the data-boundary statement. We need it in writing that nothing leaves the clinic LAN — our board asks for that sentence specifically.",
+        "start": 69.27,
+        "end": 79.68
+      },
+      {
+        "speaker": "Me",
+        "text": "You'll have it in the SOC 2 readiness summary. It's an honest sentence for us, which is why this partnership works.",
+        "start": 81.78,
+        "end": 90.53
+      },
+      {
+        "speaker": "Them",
+        "text": "Then from my side we're nearly there. Get me those two documents and I'll set up staging tenant access for your team in parallel.",
+        "start": 91.73,
+        "end": 101.73
+      },
+      {
+        "speaker": "Me",
+        "text": "Deal. Documents by Wednesday, and we aim to unblock the pilot start next week.",
+        "start": 103.83,
+        "end": 109.67
+      }
+    ],
+    "summary": "### Overview\nSecurity and compliance review for the Meridian pilot. Questionnaire came back\nmostly green; three open threads — SSO, audit logging, and a written\ndata-boundary statement — are now the only blockers to the pilot start.\n\n### Key points\n- SSO must integrate with Meridian's org-wide Azure AD.\n- Compliance requires exportable audit logs, monthly minimum: who accessed\n  which record, when.\n- The board wants the \"nothing leaves the clinic LAN\" guarantee in writing.\n\n### Decisions\n- SSO via Azure AD integration.\n- Monthly audit-log export cadence.\n- Data-boundary statement ships inside the SOC 2 readiness summary.\n\n### Action items\n- Send SOC 2 readiness summary (Hamza)\n- Provide the audit-log export spec (Hamza)\n- Set up staging tenant access (David)",
+    "attendees": [
+      "Priya Nair",
+      "David Park"
+    ],
+    "user_notes": "",
+    "link": "",
+    "tags": [
+      {
+        "label": "Client",
+        "color": "blue"
+      },
+      {
+        "label": "Security",
+        "color": "red"
+      }
+    ],
+    "action_items": [
+      {
+        "ord": 0,
+        "text": "Send SOC 2 readiness summary",
+        "assignee": "Me",
+        "due": "2026-07-16",
+        "done": false
+      },
+      {
+        "ord": 1,
+        "text": "Provide the audit-log export spec",
+        "assignee": "Me",
+        "due": "2026-07-17",
+        "done": false
+      },
+      {
+        "ord": 2,
+        "text": "Set up staging tenant access",
+        "assignee": "David Park",
+        "due": "2026-07-20",
+        "done": false
+      }
+    ]
+  }
+}

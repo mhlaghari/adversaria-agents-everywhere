@@ -1,0 +1,51 @@
+[project]
+name = "adversaria-terminal"
+version = "0.1.0"
+description = "Terminal UI for Meeting Note Taker — record, transcribe, summarize, and browse meetings from the command line."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=8.2",
+    "httpx>=0.28",
+    "soundcard>=0.4.6",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.12",
+]
+
+[project.scripts]
+advterm = "adversaria_terminal.cli:main"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Deliberate project conventions:
+# - BLE001: service/UI boundaries catch broadly and surface the message to the
+#   user (see CLAUDE.md: "never silently swallow them").
+# - DTZ005/DTZ006: a local-time display app; naive datetimes are intentional.
+# - S110: audio device enumeration has an intentional ignore-and-continue path.
+# - RUF012: Textual's documented mutable class attributes (BINDINGS).
+ignore = [
+    "BLE001",
+    "DTZ005",
+    "DTZ006",
+    "S110",
+    "RUF012",
+]

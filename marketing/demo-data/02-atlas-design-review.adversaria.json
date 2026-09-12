@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "meeting": {
+    "title": "Atlas design review — onboarding flow v2",
+    "recorded_at": "2026-07-08T10:00:00+00:00",
+    "duration_seconds": 133.8,
+    "template_used": "general",
+    "transcript": "Me: Let's go through the v2 onboarding flow. My main worry from v1 is drop-off — analytics show we lose a third of new users before they create anything.\nThem: Right, and I think the tour is the culprit. Seven steps before you touch the product. My proposal is cutting it to three: workspace name, invite, first project.\nMe: Three steps feels right. What happens to the feature tour content we cut?\nThem: It moves into empty states. Instead of a wizard telling you about templates, the empty project screen shows three starter templates you can click.\nMe: I like that a lot — show, don't tell. Do we have copy for those empty states?\nThem: Not yet. I mocked placeholder text but it needs a real writing pass. Short, verb-first, one line each.\nMe: I'll take the copy. Can you get the Figma updated with the three-step flow so Omar can scope the build?\nThem: Yes, by Friday. One more thing — we should instrument step two properly this time. Last time we shipped onboarding changes blind.\nMe: Agreed. Let's have Omar add drop-off analytics on step two before we ship, not after.\nThem: I'll write the event spec into the Figma file so it's part of the handoff.",
+    "transcript_turns": [
+      {
+        "speaker": "Me",
+        "text": "Let's go through the v2 onboarding flow. My main worry from v1 is drop-off — analytics show we lose a third of new users before they create anything.",
+        "start": 4.0,
+        "end": 15.67
+      },
+      {
+        "speaker": "Them",
+        "text": "Right, and I think the tour is the culprit. Seven steps before you touch the product. My proposal is cutting it to three: workspace name, invite, first project.",
+        "start": 16.87,
+        "end": 28.53
+      },
+      {
+        "speaker": "Me",
+        "text": "Three steps feels right. What happens to the feature tour content we cut?",
+        "start": 30.63,
+        "end": 36.05
+      },
+      {
+        "speaker": "Them",
+        "text": "It moves into empty states. Instead of a wizard telling you about templates, the empty project screen shows three starter templates you can click.",
+        "start": 37.25,
+        "end": 47.25
+      },
+      {
+        "speaker": "Me",
+        "text": "I like that a lot — show, don't tell. Do we have copy for those empty states?",
+        "start": 49.35,
+        "end": 56.43
+      },
+      {
+        "speaker": "Them",
+        "text": "Not yet. I mocked placeholder text but it needs a real writing pass. Short, verb-first, one line each.",
+        "start": 57.63,
+        "end": 65.13
+      },
+      {
+        "speaker": "Me",
+        "text": "I'll take the copy. Can you get the Figma updated with the three-step flow so Omar can scope the build?",
+        "start": 67.23,
+        "end": 75.57
+      },
+      {
+        "speaker": "Them",
+        "text": "Yes, by Friday. One more thing — we should instrument step two properly this time. Last time we shipped onboarding changes blind.",
+        "start": 76.77,
+        "end": 85.93
+      },
+      {
+        "speaker": "Me",
+        "text": "Agreed. Let's have Omar add drop-off analytics on step two before we ship, not after.",
+        "start": 88.03,
+        "end": 94.28
+      },
+      {
+        "speaker": "Them",
+        "text": "I'll write the event spec into the Figma file so it's part of the handoff.",
+        "start": 95.48,
+        "end": 101.73
+      }
+    ],
+    "summary": "### Overview\nReview of the Atlas onboarding v2 designs with Sarah. v1 loses about a third of\nnew users before first meaningful action; the seven-step tour is the prime\nsuspect. v2 cuts onboarding to three steps and moves teaching into empty states.\n\n### Key points\n- Onboarding shrinks from seven steps to three: workspace name, invite, first\n  project.\n- Cut tour content becomes clickable starter templates in empty states —\n  show, don't tell.\n- Step-two drop-off analytics must ship with the redesign, not after it.\n\n### Decisions\n- Adopt the three-step flow for onboarding v2.\n- Replace the feature wizard with template-driven empty states.\n\n### Action items\n- Update the onboarding Figma with the 3-step flow (Sarah)\n- Write empty-state copy for the three templates (Hamza)\n- Instrument drop-off analytics on step 2 (Omar)",
+    "attendees": [
+      "Sarah Chen"
+    ],
+    "user_notes": "",
+    "link": "",
+    "tags": [
+      {
+        "label": "Design",
+        "color": "purple"
+      },
+      {
+        "label": "Atlas",
+        "color": "blue"
+      }
+    ],
+    "action_items": [
+      {
+        "ord": 0,
+        "text": "Update onboarding Figma with the 3-step flow",
+        "assignee": "Sarah Chen",
+        "due": "2026-07-11",
+        "done": true
+      },
+      {
+        "ord": 1,
+        "text": "Write empty-state copy for the three templates",
+        "assignee": "Me",
+        "due": "2026-07-12",
+        "done": true
+      },
+      {
+        "ord": 2,
+        "text": "Instrument drop-off analytics on step 2",
+        "assignee": "Omar Farouk",
+        "due": "2026-07-15",
+        "done": false
+      }
+    ]
+  }
+}

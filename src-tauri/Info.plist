@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Partial Info.plist merged into the macOS bundle by the Tauri CLI.
+  These usage-description strings are required for the TCC permission prompts:
+  - NSMicrophoneUsageDescription is mandatory; without it macOS kills the app
+    when it first touches the microphone.
+  - NSAudioCaptureUsageDescription explains the Core Audio process-tap grant.
+  - NSCalendarsFullAccessUsageDescription (macOS 14+) and the legacy
+    NSCalendarsUsageDescription are required for EventKit calendar access.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Meeting Note Taker records your microphone locally to transcribe meetings on-device. Audio never leaves your Mac.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Adversaria records the audio of your meetings (the sound this Mac plays) to transcribe them on this device. Nothing leaves your Mac.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Adversaria reads your calendar events to suggest meeting attendees. This stays on your Mac.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Adversaria reads your calendar events to suggest meeting attendees. This stays on your Mac.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Adversaria uses Touch ID to unlock locked meetings. Authentication stays on your Mac.</string>
+</dict>
+</plist>

@@ -1,0 +1,259 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { HealthResponse, ModelDownloadStatus } from "../types";
+import {
+  checkServiceHealth,
+  getConfig,
+  getModelDownloadStatus,
+  listWhisperModels,
+  onConfigUpdated,
+} from "../lib/tauri";
+import {
+  ENGINE_WHISPER_IDS,
+  LIVE_CAPTIONS_ID,
+  aggregatePercent,
+  beginModelDownload,
+  isInFlight,
+  onModelDownloadStarted,
+  whisperModelId,
+} from "../lib/modelDownloads";
+
+/** What the app can honestly say about on-device transcription right now.
+ *
+ * `unknown` is its own state on purpose: an older service (no
+ * `transcriber_state`) or an unreachable one must never be reported as
+ * "model missing" — the app says nothing rather than something false. */
+export type TranscriptionSetupState =
+  | "unknown"
+  | "ready"
+  | "loading"
+  | "missing"
+  | "downloading"
+  | "failed";
+
+export interface TranscriptionSetup {
+  state: TranscriptionSetupState;
+  /** 0–100 while a transcription model downloads; null when sizes are unknown. */
+  percent: number | null;
+  /** Human sentence explaining a non-ready state ("" when there is nothing to add). */
+  detail: string;
+  /** Whether the last health poll reached the on-device service. */
+  serviceOnline: boolean | null;
+  /** English live-caption preview engine state; undefined until health answers. */
+  liveCaptionsState: HealthResponse["live_captions_state"];
+  /** Re-check health (and, when relevant, download progress) immediately. */
+  refresh: () => void;
+  /** Restart every transcription download that failed. */
+  retry: () => void;
+}
+
+/** Health poll cadence: relaxed once transcription is ready, brisk while the
+ *  user is waiting on it (that is when the guide chip has something to say). */
+const HEALTH_MS_READY = 20_000;
+const HEALTH_MS_WAITING = 4_000;
+/** Byte-progress cadence: brisk only while a download is actually moving.
+ *  While nothing is in flight this is a slow safety net — the
+ *  `onModelDownloadStarted` bus wakes the loop instantly when one begins. */
+const DOWNLOAD_MS_ACTIVE = 1_000;
+const DOWNLOAD_MS_IDLE = 5_000;
+
+/**
+ * Single source of truth for "can this machine transcribe yet?" (SPEC V3).
+ *
+ * Reads `/health`'s `transcriber_state` and — only while that is anything but
+ * `ready` — the byte progress of the transcription download profiles. Nothing
+ * here ever STARTS a transcription-model download: the app guides, the user
+ * clicks. The one exception is the 44 MB live-caption preview model, which has
+ * no picker and no consent moment of its own, so it follows the onboarding rule
+ * (auto download, one progress strip) — started at most once per session, and
+ * never re-started after a failure (the strip's Retry does that).
+ */
+export function useTranscriptionSetup(): TranscriptionSetup {
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [serviceOnline, setServiceOnline] = useState<boolean | null>(null);
+  const [downloads, setDownloads] = useState<Record<string, ModelDownloadStatus>>({});
+  // null until the persisted config has answered. A configured remote engine
+  // makes every local Whisper download state irrelevant: the recording path
+  // does not use those weights at all.
+  const [remoteConfigured, setRemoteConfigured] = useState<boolean | null>(null);
+  // null = catalogue not fetched yet (the sidecar may still be booting).
+  const [modelKeys, setModelKeys] = useState<string[] | null>(null);
+  const [tick, setTick] = useState(0);
+  const autoStarted = useRef(false);
+
+  const refresh = useCallback(() => setTick((n) => n + 1), []);
+
+  useEffect(() => {
+    let alive = true;
+    const apply = (config: {
+      transcription_provider?: string;
+      transcription_base_url?: string;
+    } | null) => {
+      if (!alive) return;
+      setRemoteConfigured(
+        Boolean(
+          config &&
+            config.transcription_provider !== "local" &&
+            config.transcription_base_url?.trim(),
+        ),
+      );
+    };
+    getConfig().then(apply).catch(() => apply(null));
+    const unsubscribe = onConfigUpdated(apply);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Every profile id that can hold the transcription weights: the engine pair
+  // plus one per curated model in the picker.
+  const whisperIds = useMemo(
+    () => [...ENGINE_WHISPER_IDS, ...(modelKeys ?? []).map(whisperModelId)],
+    [modelKeys],
+  );
+
+  // The catalogue is static once read — but in a packaged build this hook
+  // mounts BEFORE the sidecar has bound its port, so a one-shot fetch left
+  // the chip and strip blind to per-model downloads for the whole session.
+  // Retry until it lands: when the service comes online, and on manual refresh.
+  useEffect(() => {
+    if (modelKeys !== null) return;
+    let alive = true;
+    listWhisperModels()
+      .then((models) => {
+        if (alive) setModelKeys(models.map((model) => model.key));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [modelKeys, serviceOnline, tick]);
+
+  // A pre-V3 service omits the field; normalize a defensive null to undefined
+  // so "unknown" can never be mistaken for "not ready" (which fast-polls).
+  const transcriberState = health?.transcriber_state ?? undefined;
+
+  useEffect(() => {
+    let alive = true;
+    const ping = () =>
+      checkServiceHealth()
+        .then((next) => {
+          if (!alive) return;
+          setHealth(next);
+          setServiceOnline(true);
+        })
+        .catch(() => {
+          if (!alive) return;
+          setHealth(null);
+          setServiceOnline(false);
+        });
+    ping();
+    const timer = window.setInterval(
+      ping,
+      transcriberState === "ready" ? HEALTH_MS_READY : HEALTH_MS_WAITING,
+    );
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [transcriberState === "ready", tick]);
+
+  // Auto-fetch the preview model once the service says it is missing. Only from
+  // a clean state: an errored or in-flight download is left to the strip.
+  useEffect(() => {
+    if (autoStarted.current) return;
+    if (serviceOnline !== true || health?.live_captions_state !== "missing") return;
+    autoStarted.current = true;
+    getModelDownloadStatus(LIVE_CAPTIONS_ID)
+      .then((status) => {
+        if (status.state === "idle") return beginModelDownload(LIVE_CAPTIONS_ID);
+        return undefined;
+      })
+      .catch(() => {});
+  }, [serviceOnline, health?.live_captions_state]);
+
+  // Byte progress is only worth asking for while transcription is NOT ready —
+  // a settled machine polls nothing at all.
+  const watchDownloads =
+    remoteConfigured === false &&
+    transcriberState !== undefined &&
+    transcriberState !== "ready";
+
+  // Only a live download earns the fast cadence.
+  const anyInFlight = whisperIds.some((id) => {
+    const status = downloads[id];
+    return status ? isInFlight(status) : false;
+  });
+
+  useEffect(() => {
+    if (!watchDownloads) return;
+    let alive = true;
+    const poll = () => {
+      whisperIds.forEach((id) => {
+        getModelDownloadStatus(id)
+          .then((status) => {
+            if (alive) setDownloads((current) => ({ ...current, [id]: status }));
+          })
+          .catch(() => {});
+      });
+    };
+    poll();
+    const timer = window.setInterval(
+      poll,
+      anyInFlight ? DOWNLOAD_MS_ACTIVE : DOWNLOAD_MS_IDLE,
+    );
+    // A download started anywhere wakes this loop instantly; the poll it
+    // triggers flips anyInFlight, which re-arms the interval at the fast cadence.
+    const unsubscribe = onModelDownloadStarted(() => poll());
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      unsubscribe();
+    };
+  }, [watchDownloads, anyInFlight, whisperIds, tick]);
+
+  const statuses = whisperIds
+    .map((id) => downloads[id])
+    .filter((status): status is ModelDownloadStatus => Boolean(status));
+  const running = statuses.filter(isInFlight);
+  const failed = statuses.find((status) => status.state === "error");
+
+  // A configured remote endpoint is the transcription engine, so the local
+  // sidecar and its model cache cannot make setup fail. For the on-device path,
+  // real transcriber readiness outranks an old failed alias: Windows exposes
+  // the same cached CT2 artifact through `whisper-main`, `whisper-live`, and a
+  // picker profile, and one stale alias used to keep the whole app red even
+  // while recordings were transcribing successfully.
+  let state: TranscriptionSetupState;
+  if (remoteConfigured === null) state = "unknown";
+  else if (remoteConfigured) state = "ready";
+  else if (transcriberState === "ready") state = "ready";
+  // A live download outranks a non-ready health response: the service reports
+  // "missing" for the whole fetch, and "Downloading 62 %" is the truer sentence.
+  else if (running.length > 0) state = "downloading";
+  else if (failed) state = "failed";
+  else if (transcriberState === "loading") state = "loading";
+  else if (transcriberState === "error") state = "failed";
+  else if (transcriberState === "missing") state = "missing";
+  else state = "unknown";
+
+  const retry = useCallback(() => {
+    if (remoteConfigured) return;
+    whisperIds.forEach((id) => {
+      if (downloads[id]?.state === "error") {
+        beginModelDownload(id).catch(() => {});
+      }
+    });
+  }, [remoteConfigured, whisperIds, downloads]);
+
+  return {
+    state,
+    percent: running.length > 0 ? aggregatePercent(running) : null,
+    detail: state === "ready" ? "" : failed?.detail || health?.transcriber_detail || "",
+    serviceOnline,
+    liveCaptionsState: health?.live_captions_state,
+    refresh,
+    retry,
+  };
+}
