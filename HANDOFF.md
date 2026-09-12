@@ -1,8 +1,103 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
+> **CURRENT — 2026-09-12 15:23 GST: founder authorized committing and pushing all
+> hackathon work to `origin/main`. This checkpoint supersedes the uncommitted,
+> missing-key and STT-blocker notes in the history below.**
+
+- Shipping the desktop Copilot/Workspaces commitment workflow and diagram
+  previews, the standalone API-powered CLI, and the README/story presentation.
+- Fresh checks: 437 frontend tests, 58 CLI tests, 507 Rust tests passed (one
+  existing ignored). Build, bundle/security, Ruff and Rust formatting passed.
+  Rust tests used isolated data and the documented bundle-resource override.
+- [cli/PROVIDER_CHECK.md](cli/PROVIDER_CHECK.md) records successful OpenRouter
+  speech/model and Exa calls on synthetic/public inputs. Actual microphone and
+  loopback capture, Windows and native desktop rehearsal remain to be checked.
+- [Presentation files](marketing/adversaria-story/README.md): eight slides in
+  Laghari Labs design, with editable PowerPoint, PDF, offline HTML and notes.
+  README credits Hamza's ongoing Adversaria project and includes the event banner.
+- Credentials stay in the user's local configuration. Generated startup logs
+  and private slide build files stay outside version control.
+- Next after push: rehearse the live demo and submit the hackathon entry. This
+  repository push does not publish a desktop release or submit the entry.
+
+## Earlier checkpoints
+
+> **EARLIER — 2026-09-12: founder requested a terminal rebuild using Exa,
+> OpenRouter and Codex credits. The standalone CLI is implemented and verified
+> below; the desktop rehearsal in the historical baton is a separate task.**
+
+- **Entry:** `./adversaria setup` then `./adversaria`; Windows `adversaria.ps1`.
+  Independent Python package in `cli/`, installable with `uv tool install ./cli`.
+  Read `cli/README.md` for commands, demo and boundaries.
+- **Credit routing:** OpenRouter speech-to-text and streamed LLMs by default;
+  Exa search on `--web`; Codex via existing `codex exec` login for task runs or
+  suggestions. Direct OpenAI file/Realtime/Responses API is optional. Founder
+  explicitly deprioritized local models; no local ML runtime is required.
+- **Features:** interactive capture alongside suggestions/jobs; silence/forced-turn
+  commitment detection; approve/dismiss; isolated SQLite workspaces, meetings,
+  attachments and tasks; run/retry/review; Markdown, Mermaid and slide drafts;
+  cited Exa source files; model catalogs; diagnostics; hidden key setup.
+- **Verified:** 39 tests; Ruff lint/format; public OpenRouter text + STT catalogs;
+  microphone/BlackHole input enumeration; real PTY approve-to-queue flow. Real
+  Codex CLI 0.154.0 (ChatGPT login) ran a synthetic diagram task to awaiting_review,
+  then CLI approval marked it done. Artifact:
+  `/tmp/adversaria-cli-demo.gMBLPD/artifacts/1/1/artifact.md`. The `adversaria` command
+  is installed with `uv tool install ./cli` (version 0.1.0). No paid provider
+  keys were available in the environment. No live cloud audio or Exa success claim.
+- **Data:** CLI uses `~/.local/share/adversaria-cli`, configurable by
+  `ADVERSARIA_CLI_HOME`/`--home`. Plain SQLite and owner-permission files, not the
+  desktop's SQLCipher/encrypted spool. No desktop DB migration/sync. Existing
+  uncommitted frontend/Rust work was preserved. No git commit/push.
+- **Next:** enter OpenRouter + Exa keys with `setup`; rehearse `record` with a mic
+  and optionally a routed loopback input, ask a question, approve a caught
+  commitment, run Exa research, review the artifact. Test actual voice sensitivity
+  and latency; Windows and optional direct OpenAI provider still need live checks.
+
+---
+
 > **READ THIS BLOCK FIRST.** Everything below it is the inherited Adversaria baton (long, historical). This block is the live state for the AI Tinkerers "Agents, Everywhere" hackathon, 2026-09-12, team OOM. Build window 11:15 to 15:30, submissions by 16:00 (Dubai, +04).
 
-**2026-09-12 12:20 GST — Today's feature is half built by background workers; the previous Claude session handed off here.**
+**2026-09-12 14:55 GST — CLI: keys fixed, copilot live on OpenRouter, record screen TUI added, speech path needs Codex. Nothing committed.**
+
+- **Keys:** the OpenRouter key had been pasted twice into `~/.local/share/adversaria-cli/openrouter.key` (146 chars); de-duplicated to 73 → `GET /api/v1/auth/key` 200. `exa.key` still holds a copy of the OpenRouter key: the real Exa key was never entered (`./adversaria auth exa`).
+- **Live on credits:** `ask --workspace Interviews` returns a grounded answer through OpenRouter in ~7 s. An "Interviews" workspace with `cli/examples/adversaria-overview.txt` attached exists in the real CLI home.
+- **Speech, verified fact:** OpenRouter has no speech-to-text endpoint and no `openai/gpt-transcribe`; the CLI's `record`/`transcribe` on the openrouter provider fail with 401. Audio-input chat works: `google/gemini-3.8-flash` + `reasoning {effort:"low"}` + `max_tokens 600` transcribes a 16 kHz WAV chunk verbatim in 3.1 s. Recipe and request shape: `.hackathon/openrouter-speech-recipe.md`. Rewriting `transcription.py` to it is a Codex task (Codex owns the file); not done as of 14:55.
+- **TUI:** `cli/adversaria_cli/tui.py` (Claude worker) renders a rich Live/Layout record screen (transcript 60 %, CAUGHT cards, COPILOT pane, hint bar) for `record`/`replay` on a TTY; `ADVERSARIA_PLAIN=1` restores plain output byte for byte. Hook: five guarded lines in `main.py` after `shell = Shell(...)`. Codex separately added `dashboard.py` and made `adversaria` with no arguments open it (`tui` subcommand). 47 pytest pass; TTY replay renders both cards with no traceback.
+
+**2026-09-12 14:46 GST — CLI branch: `cli/` (Python, uv) built at the hackathon by a Codex agent on cloud credits; verified offline by Claude workers. Desktop work unchanged since 13:59. Nothing committed yet.**
+
+- **What exists:** `./adversaria` / `./adversaria.ps1` launch `cli/adversaria_cli` (2,000 lines): `record` with live captions and the same commitment detector as the desktop (`copilot.py`), `ask`/`suggest` grounded answers, `workspace` / `task` / `work` (queued agent runs on OpenRouter or the user's Codex login), `search` (Exa), `meetings`, `replay` (feed a transcript through the detector), `doctor`, `setup`, `auth`. Providers: OpenRouter (LLM + speech), Exa, OpenAI realtime, Codex via `codex exec`. **Audio and transcripts leave the machine** in this variant; the README says so. 39 pytest tests pass (`cd cli && uv run pytest`). Codex owns `cli/adversaria_cli/`, `cli/tests/`, `cli/README.md`; do not edit those without checking the floor (`http://127.0.0.1:4517/`) for an active Codex card.
+- **Verified offline (no keys, fresh `--home`):** doctor / devices / models list / workspace create+list+attach+instructions / replay / task add+list+show / meetings list+show all pass; `work`, `task run`, `ask`, `search`, `meetings summarize` fail with one clean sentence naming the missing key. `replay` on `cli/examples/design-review.txt` catches both demo sentences (`c1 · visualize · by Monday`, `c2 · research · before Friday`) and saves nothing until approve. Fallback demo: `bash cli/scripts/demo-offline.sh` (12 commands, exit 0).
+- **Not verified:** any paid call (no OpenRouter/Exa key entered as of 14:46), real-mic `record`, Windows. Two Codex-bound nits: `meetings show` collapses `Them:`/`Me:` line breaks into one paragraph; a heard question with no LLM key is dropped silently (should print one line).
+- **Next:** founder enters keys (`./adversaria setup`), runs one 30-second `record --copilot`; commit desktop and CLI as separate commits once authorized; submit.
+
+**2026-09-12 13:25 GST — Copilot compact layout, Workspaces inline diagram preview, and a coherent local Visualize contract all landed (uncommitted). Verified by the parent on the combined tree: tsc clean, 437/437 tests, bundle 504.62 kB / 520; Rust 507 passed / 1 ignored, fmt + clippy + whitespace clean. Designed by Astra (`.hackathon/astra-layouts.md`, brief `.hackathon/brief-astra-layouts.md`), built by four Claude workers, integrated here. Dev app relaunched via `./start.sh` at 13:22 (log `.hackathon/start-1322.log`). Supersedes the 12:42 entry.**
+
+- **Companion (`RecordingCompanion.tsx`, `CopilotCards.tsx`, `prototype.css`, `src/test/setup.ts`, new `RecordingCompanion.layout.test.tsx`):** `layout` is now `compact | transcript | balanced`, derived with `matchMedia("(min-width: 900px)")`; the `recording_view` config still decides between transcript and balanced above 900 px. Compact (the "minimized beside a call" case): 44 px rec bar, 28 px status button (`provider · folder readiness · Tools`), pinned CAUGHT list (≤184 px, newest first, own scroll), 176 px transcript, independently scrolling ANSWERS with Specifics / From your notes folded under "More", 44 px notes footer that grows only while focused. Tools is a non-modal sheet over the answers area holding consent, mic checkbox, Last time and attachments. Wide: CAUGHT is one section below the tabs and stays visible on Notes (cap 200 px); the answer panel is a bounded flex column with `.copilot-list` owning the scroll; readiness + consent share one 32 px `<details>` row; 3 px amber inset on untapped cards; 36 px tabs; 320 px transcript at 900 to 1199 px. **Test contract change:** the jsdom `matchMedia` stub in `src/test/setup.ts` now evaluates width queries against `window.innerWidth` (default 1280); tests wanting a compact layout set `window.innerWidth` first.
+- **Workspaces (`workspaces/ArtifactPreview.tsx`, `WorkspaceDetailView.tsx`, new `workspaces-demo.css`, new `ArtifactPreview.test.tsx`):** `.svg` renders inline; `.html` has its first `<svg>` extracted with `DOMParser` and shown as a data-URI `<img>` (240 px, no network); failures say "Diagram preview unavailable". An `awaiting_review` Visualize task shows its diagram under the row without expanding (`pickInlinePreviewArtifact`: `solutions-architecture.html` → `.svg` → `.html`). Run/preview caches reset only when the workspace id changes. ≤1120 px (`useCompactLayout`): one column, New task and Project brain in closed `<details>`, two-line titles, 36 px text Approve.
+- **Rust (`commands.rs`, `copilot_session.rs`):** `commitment_capability` now returns `visualize` (diagram / draw / sketch / chart / flowchart / wireframe / mock up / solutions architecture / system design) and `present` (deck / slides / presentation); `COMMITMENT_PATTERNS` gained the verbs draw, draw up, sketch, build, make, map out, diagram so the demo sentence is caught. For **engine local + capability visualize** the run now sends `LOCAL_VISUALIZE_INSTRUCTION` (exactly one `=== FILE: solutions-architecture.html ===` block with one standalone 960×360 SVG, ≤6 nodes, no scripts) and `run_skills()` drops the `drawio-diagram` adapter for that engine/capability only. Python unchanged.
+- **Demo script updated** (`.hackathon/demo-script.md`, Astra §4): Visualize first ("I will create a solutions architecture diagram for Wael by Monday."), then Research ("I will check the SIDRA thresholds against the manual for Wael before Friday."); no "Yes," / "And" prefixes; pause for the silence boundary; an **Interviews** workspace (Local, agents resumed) must exist so routing lands there.
+- **Not verified:** no one has seen the compact layout or the inline diagram in the running app; the Local Visualize run has never been executed with the new contract (Astra: if it exceeds 60 s in rehearsal, show a labelled earlier result). Locked meetings were unlocked by the founder by hand (6 rows, `meetings.locked=0`).
+- **Next, in order:** founder rehearses once at ~480 px wide (both channels, two cards, Approve both, Stop, Workspaces → Interviews shows the diagram inline); fix only what the rehearsal breaks; commit as commit 3 with `HACKATHON.md` "Built at the hackathon" filled; video; submit by 15:30.
+
+**2026-09-12 12:42 GST — Copilot + Workspaces polish pass (uncommitted). All gates green: Rust 504 passed / 1 ignored, fmt + clippy clean; frontend tsc clean, 428 tests, entry bundle 500.65 kB. The dev app rebuilt at 12:41 and is running with these changes. Supersedes the card/copy details in the 12:24 entry below.**
+
+- **Commitment card now tracks its own task.** `src/components/CommitmentCard.tsx` rewritten: shows the inferred task type in a `Do [Research|Write|Visualize|Present]` select and passes the user's choice to `commitment_approve` (it previously sent nothing, so every caught commitment became the detector's guess with no way to correct it). After Approve the card polls `getLatestWorkspaceRun(taskId)` every 3 s and reports `Queued for an agent → Working on it… → Draft ready`, then offers **Open draft** via `openWorkspaceArtifact`. The old `Task #42 queued · run started` copy — a database id and a three-way ternary — is gone.
+- **Rust: `Commitment.capability`** added (`types.rs`, set in `catch_commitment`, defaulted in `approve_commitment_on` so the inference has one home). The flattened `copilot-commitment` payload is now **12 keys, not 11** — the count assertion in `commitment_approve_creates_task_and_queues` was updated, and two tests were added (`caught_commitment_carries_its_inferred_capability`, `approve_honours_a_capability_the_user_corrected`).
+- **Copilot panel grouped.** `RecordingCompanion.tsx`: commitments now sit under a `CAUGHT · n NEEDS YOUR TAP` heading and answers under `ANSWERS`, in both the wide panel and the narrow sheet; untapped commitments also raise the Copilot tab badge. The readiness line lost its jargon: `Folder: X · 33 sources indexed · pack 2 projects` → `X · ready · 33 sources` (and `reading your files…` / `could not read your files:` while indexing or on error). `RecordingCompanion.readiness.test.tsx` was updated to the new copy.
+- **Workspaces Live chip carries provenance:** `Live` → `live · 10:30`, parsed from the task details by a new `caughtLiveAt()` helper in `WorkspaceDetailView.tsx` (still a string read of the `Caught live during the meeting at HH:MM` prefix that `approve_commitment_on` writes — no schema change). `CAPABILITY_OPTIONS`/`TaskCapability` moved to `src/components/workspaces/capabilities.ts` so the card and the detail view share one set of labels.
+- **Bundle budget raised 500 → 520 kB, deliberately** (`scripts/check-bundle-size.mjs`, dated comment). The polish landed at 500.65 kB; the 500 kB Phase 0 number was self-imposed, not measured. `WorkspacesView` is already its own 41.79 kB chunk, so code-splitting is the next lever if the entry chunk keeps climbing.
+- **Not done / next:** none of this has been seen with real speech. The three-minute rehearsal in `.hackathon/demo-script.md` is still the outstanding step, and the run-progress poll in particular has only been exercised against mocked runs. Nothing is committed — no git writes were made.
+
+**2026-09-12 12:24 GST — Rust commitment slice DONE; automated Rust gates passed with a bundle-resource override. Native integration rehearsal remains pending. This update supersedes the Rust status and conflicting review alternatives in the earlier handoff below.**
+
+- **Changed by the Rust executor:** `src-tauri/src/copilot_session.rs`, `commands.rs`, `lib.rs`, `types.rs`, `storage.rs`. Confirmed Me/Them captions close on `silence`; the pinned regex fixtures, owner/deadline capture, 60-second normalized dedup, in-memory commitment state, `copilot-commitment` events, and registered approve/dismiss commands are implemented. Approval is idempotent and creates an eligible queued task with capability staffing in one transaction; storage failures leave the card caught and permit retry. Dismiss creates nothing.
+- **Pinned contract retained:** nothing is persisted for a commitment before Approve. Use the workspace whose name matches the recording folder case-insensitively, otherwise reuse/create `Live meetings` with Local as its default engine. Existing workspaces retain their engine. Use the existing session-to-meeting lookup when available, otherwise `None`; no columns or backfill were added. The alternative review suggestions to precreate tasks, use a singular `Live meeting` workspace, or add session backfill were not adopted.
+- **Implementation adaptations:** queue pickup uses existing `autopilot::kick`, which dispatches through the existing workspace runner. `run_queued` means eligible queued work with agents unpaused, not proof that a run has started. Paused approval still creates the task and returns `run_queued: false, agents_paused: true`; resume uses the existing pickup path. Shared storage `_on` helpers keep approval atomic and enable in-memory tests.
+- **Validation:** **502 passed, 1 existing ignored** (`migrate_real_db`), including **11 new tests**; `cargo fmt --check`, `cargo clippy`, and `git diff --check` passed. The literal Cargo gate first failed because `python-service/rapid-runtime/dist/rapid-mlx` is absent. Successful run: `cd src-tauri; export ADVERSARIA_DATA_DIR=$(mktemp -d); export TAURI_CONFIG='{"bundle":{"resources":[]}}'; cargo test && cargo fmt --check && cargo clippy`. This is a test-only environment override; no Python or packaging files were edited. Logs: `/tmp/adversaria-commitment-cargo-test.log`, `/tmp/adversaria-commitment-clippy.log`.
+- **Next:** parent reviews the combined IPC/UI changes, then rehearses the three-minute recording demo on Local: both caption channels, no task before tap, Approve produces one Live task and an artifact before stopping, Dismiss produces none, and paused approval reports queued/paused. Sub-second catch and artifact timing still need native measurement. Frontend gate figures below are the frontend worker's report, not rerun by this executor. No git writes, app restart, or access to the user's application-data directory occurred in this Rust run.
+
+**Earlier handoff — 2026-09-12 12:20 GST: today's feature was half built by background workers.**
 
 - **Honesty rule (founder agreed):** commits 1 and 2 are prior work (`eec096e` = Adversaria 0.3.83 as released 2026-09-02; `eeecf48` = Workspaces and Live Copilot on top, built Aug 18 to Sep 11). Everything built today lands as commits 3 onward. `HACKATHON.md` has the pain point, the prior-work list and an empty "Built at the hackathon" section: fill it only with what actually lands today. Never describe the two layers as built at the hackathon.
 - **Today's slice (pinned):** `.hackathon/spec-pinned.md` (cross-layer contract), `spec-rust.md`, `spec-frontend.md`. Commitments spoken in a meeting ("I'll send the numbers to Wael by Monday") are detected on the live captions beside the question detector, shown as a "Commitment caught" card in the companion's Copilot tab with Approve and Dismiss, Approve creates a workspace task (`storage::create_workspace_task`, details start with "Caught live") and queues a Local run unless agents are paused; the Workspaces tab shows a Live chip. Event `copilot-commitment`; commands `commitment_approve(session_id, id, capability?)` and `commitment_dismiss(session_id, id)`. Python: no change. Demo: `.hackathon/demo-script.md`.

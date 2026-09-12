@@ -4,6 +4,28 @@ _The product contract — a **living doc**. What this is and where it's going
 (`CLAUDE.md` covers the current code; this covers the destination). Every session
 reads this first; keep it current. Strategy rationale: [docs/STRATEGY.md](./docs/STRATEGY.md)._
 
+## Hackathon slice — 2026-09-12
+
+### Terminal edition (founder-directed scope extension)
+
+`cli/` provides a standalone terminal version of capture → suggestions → approved
+tasks → artifacts, using the hackathon's OpenRouter, Exa and Codex credits. Unlike
+the desktop local-first contract below, this explicitly selected edition defaults
+to cloud speech/LLMs through OpenRouter. Codex uses the installed CLI's login;
+Exa queries are explicit (`--web`/`search`). Direct OpenAI API is optional. No local
+model or Tauri/ML sidecar is required. Its own plaintext SQLite store is isolated
+from desktop SQLCipher data. It supports microphone plus optional loopback input;
+native desktop audio taps, diarization and desktop DB synchronization are outside
+this terminal implementation. Details and live verification limits: `cli/README.md`.
+
+### Desktop commitment slice
+
+Commitments spoken during a recording are held in memory and presented for explicit approval. Only confirmed caption turns ending at a `silence` boundary are detected, on both Me/Them channels, with the pinned commitment patterns, owner/deadline captures, and normalized 60-second deduplication. Copilot-generated SAY text is not a detector input.
+
+`commitment_approve(session_id, id, capability?)` creates a workspace task whose details start with `Caught live`, then kicks the existing autopilot when agents are unpaused. While paused, it creates an eligible queued task and reports `run_queued: false, agents_paused: true`. Prefer a workspace matching the recording folder's name case-insensitively; otherwise reuse/create `Live meetings` with engine `local`. Existing workspace engines are retained. `commitment_dismiss(session_id, id)` only changes in-memory state. Every catch/state change emits the pinned `copilot-commitment` payload. Approval is idempotent; failures roll back task creation. Link a known meeting ID, otherwise use `None`; schema changes and backfill are outside this slice.
+
+Rust implementation is complete and automated gates pass; native end-to-end timing and the artifact-before-recording-stops demonstration remain pending. See [HANDOFF.md](./HANDOFF.md) for validation and the test-only bundle-resource override.
+
 ## Vision
 **Adversaria** is a privacy-first, bot-free meeting notetaker for Windows and macOS (Apple Silicon) that records meeting audio locally, transcribes it on-device, and generates structured notes with a local LLM — **nothing leaves the machine**. No bot joins the call; no audio, transcript, or summary is uploaded; recordings are deleted once a meeting is successfully transcribed (a recording that couldn't be transcribed — e.g. the AI service was down — is kept on-device, clearly marked, until you retry). The destination is not "another Granola clone" but the **sovereign capture organ of lagharilabs OS**: the complete capture → memory → action loop that runs entirely on the customer's own infrastructure, for buyers (legal, healthcare, EU/sovereign, defense) who are legally or strategically barred from cloud AI.
 

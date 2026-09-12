@@ -1,6 +1,79 @@
 # STATUS (hackathon repo)
 
-> **2026-09-12 12:20 GST — 🟠 Hackathon slice "commitments caught live become workspace tasks": frontend DONE (425 tests, 498.08 kB), Rust IN PROGRESS (background Codex worker, see HANDOFF top block), Astra check in progress. Repo: 2 commits of disclosed prior work; today's work uncommitted in the tree. Next: Rust gate → commit 3 → HACKATHON.md → demo → submit by 15:30.**
+> **Current — 2026-09-12 15:23 GST: owner authorized committing and pushing the
+> complete hackathon work to `origin/main`. Copilot/Workspaces improvements, the
+> CLI, README attribution/banner and the eight-slide Laghari Labs deck are ready.**
+
+- Fresh checks: 437 frontend tests, 58 CLI tests, 507 Rust tests passed (one
+  existing Rust test ignored). Production build, bundle/security checks, Ruff
+  lint/format and Rust formatting passed. Rust tests used isolated data and the
+  documented test-only bundle-resource override.
+- [Provider checks](cli/PROVIDER_CHECK.md) record successful OpenRouter speech,
+  model and Exa requests using synthetic/public inputs. These supersede the
+  earlier missing-key and unsupported-STT notes below. Real microphone/loopback
+  and native desktop demo rehearsal remain separate verification tasks.
+- The [presentation](marketing/adversaria-story/README.md) includes editable
+  PowerPoint, PDF, offline HTML and presenter notes. All eight slides reviewed.
+- Local credentials, startup logs and private presentation build output are
+  excluded from the commit.
+
+## Earlier checkpoints
+
+> **Earlier — 2026-09-12: Adversaria terminal edition built for OpenRouter + Exa +
+> Codex credits. 39 CLI tests pass; Codex task execution and OpenRouter model
+> catalogs verified live. Cloud speech/Exa rehearsal awaits keys. Uncommitted.**
+
+| Terminal workflow | State |
+| --- | --- |
+| Interactive companion, commands, persistent workspaces/meetings/tasks | Implemented; command/PTY tests pass |
+| Cloud file/live speech, OpenRouter default, optional OpenAI Realtime | Contract/capture tests pass; paid microphone rehearsal pending |
+| Copilot questions + commitment approve/dismiss + serialized jobs | Tested; no task before approval |
+| OpenRouter/OpenAI streaming + installed Codex engine | Tested; one real Codex diagram artifact awaiting review |
+| Exa research, retained sources, artifact review/retry | Tested with mocked provider responses; key required for live search |
+| Documentation, cross-platform launchers, installable CLI package | `cli/README.md`, `adversaria`, `adversaria.ps1` |
+
+---
+
+> **2026-09-12 14:55 GST — CLI copilot live on OpenRouter (7 s answers); record screen TUI in; 47 tests. Blocked: OpenRouter speech path (Codex must switch to audio-input chat, recipe in `.hackathon/`), Exa key not entered. Nothing committed.**
+
+> **2026-09-12 14:46 GST — `cli/` terminal Adversaria on cloud credits (Codex-built, 39 tests): offline path verified, cloud path awaiting keys. Desktop: unchanged, green. Nothing committed.**
+
+> **2026-09-12 13:25 GST — Compact companion layout, inline diagram preview in Workspaces, local Visualize contract: built and gated (437/437 frontend, 507 Rust, bundle 504.62/520). Dev app relaunched 13:22. Uncommitted. Unrehearsed.**
+
+| Work | Status | Evidence / next step |
+| --- | --- | --- |
+| Companion compact layout (<900 px) + wide corrections | Done | 5 layout tests; Astra §1–2 fully landed |
+| Workspaces inline SVG/HTML preview + one-column ≤1120 px | Done | 4 new tests; preview shows without expanding the row |
+| Detector: visualize / present + diagram verbs | Done | 507 Rust tests incl. demo sentence caught end to end |
+| Local Visualize output contract (one HTML+SVG, no drawio) | Done | 3 tests; never yet executed against Ollama |
+| Rehearsal at ~480 px with a live Visualize run | **Pending — the gate before commit** | Founder; see `.hackathon/demo-script.md` |
+| Commit 3 + HACKATHON.md + video + submit | Pending | After rehearsal |
+
+---
+
+> **2026-09-12 12:42 GST — Copilot + Workspaces polish done and live in the dev app. Rust 504 passed / 1 ignored (fmt + clippy clean); frontend tsc clean, 428 tests, bundle 500.65 kB / 520 kB. Commitment cards now carry a task-type control and track their own run to "Draft ready"; the Copilot panel separates CAUGHT from ANSWERS; the Live chip shows the time it was caught. Still uncommitted, and still not rehearsed with real speech.**
+
+| Work | Status | Evidence / next step |
+| --- | --- | --- |
+| Commitment card: task type + in-card run progress | Done | `CommitmentCard.tsx` rewritten; 9 card tests; polls `getLatestWorkspaceRun` every 3 s |
+| Rust `Commitment.capability` | Done | 2 tests added; `copilot-commitment` payload is now 12 keys |
+| Copilot panel grouping + plain-language readiness line | Done | `RecordingCompanion.tsx`; readiness test updated to new copy |
+| Workspaces Live chip provenance | Done | `live · 10:30` via `caughtLiveAt()`; no schema change |
+| Bundle budget 500 → 520 kB | Done, documented | Dated comment in `scripts/check-bundle-size.mjs` |
+| Native three-minute demo | **Pending — the one thing left** | Real speech, both channels, approve/dismiss, paused/resumed pickup, artifact before stop |
+| Commit/submission | Pending authorization | No git writes made |
+
+---
+
+> **2026-09-12 12:24 GST — Hackathon commitment slice: Rust DONE (502 passed, 1 existing ignored; fmt/clippy clean), frontend DONE per its worker (425 tests, 498.08 kB). Native integration rehearsal pending. Today's implementation remains uncommitted. Next: parent integration review → Local recording demo with approve/dismiss and pause/resume → record actual demo evidence.**
+
+| Work | Status | Evidence / next step |
+| --- | --- | --- |
+| Rust detector, events, commands, workspace task pickup | Done | 11 added tests; five owned Rust files changed; pinned contract retained |
+| Rust gates | Passed with test-only override | Missing bundled `rapid-mlx` blocks the literal gate; use `TAURI_CONFIG='{"bundle":{"resources":[]}}'` with isolated `ADVERSARIA_DATA_DIR`; see HANDOFF |
+| Frontend | Done per frontend worker | 425 tests, entry 498.08 kB; not rerun by Rust executor |
+| Native three-minute demo | Pending | Confirm both channels, no creation before approval, Live task, artifact before stop, dismissal, and paused/resumed pickup |
+| Commit/submission | Parent follow-up | No git writes or publication by Rust executor |
 
 ---
 

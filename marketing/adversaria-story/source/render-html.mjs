@@ -1,0 +1,30 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {chromium} from '/Users/mhlaghari/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+const root=path.resolve(import.meta.dirname,'..');
+const browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+const page=await browser.newPage({viewport:{width:1600,height:974},deviceScaleFactor:1});
+await page.goto('file://'+path.join(root,'output','adversaria-story.html'));
+await page.evaluate(()=>document.fonts.ready);
+await page.evaluate(()=>document.body.classList.add('clean'));
+const fonts=await page.evaluate(()=>({silkscreen:document.fonts.check('100px Silkscreen'),jetbrains:document.fonts.check('36px "JetBrains Mono"')}));
+const checks=[];
+for(let i=0;i<8;i++){
+ await page.evaluate(i=>{show(i);document.querySelector('#stage').style.transform='translate(-50%,-50%) scale(1)';},i);
+ await page.locator('.slide.active').screenshot({path:path.join(root,'.build','html-slide-'+(i+1)+'.png')});
+ checks.push(await page.locator('.slide.active').evaluate((slide,i)=>({slide:i+1,overflows:[...slide.querySelectorAll('.txt')].filter(x=>x.scrollWidth>x.clientWidth+2||x.scrollHeight>x.clientHeight+2).map(x=>({text:x.innerText,width:[x.scrollWidth,x.clientWidth],height:[x.scrollHeight,x.clientHeight]}))}),i));
+}
+await page.emulateMedia({media:'print'});
+await page.pdf({path:path.join(root,'output','adversaria-story.pdf'),width:'1600px',height:'900px',printBackground:true,preferCSSPageSize:true,displayHeaderFooter:false});
+await page.emulateMedia({media:'screen'});
+await page.evaluate(()=>document.body.classList.remove('clean'));
+await page.keyboard.press('Home');
+await page.keyboard.press('ArrowRight');
+const navigation=await page.locator('#counter').textContent();
+await page.keyboard.press('n');
+const notesVisible=await page.locator('#notes').isVisible();
+await page.locator('#edit').click();
+const editable=await page.locator('.slide.active .txt').first().getAttribute('contenteditable');
+await fs.writeFile(path.join(root,'.build','html-validation.json'),JSON.stringify({fonts,checks,navigation,notesVisible,editable},null,2));
+console.log(JSON.stringify({fonts,checks,navigation,notesVisible,editable}));
+await browser.close();

@@ -1,5 +1,156 @@
 # Adversaria
 
+![AI Tinkerers Agents, Everywhere: Bots, Channels, & More global hackathon](docs/assets/agents-everywhere-hackathon.png)
+
+## Agents Everywhere hackathon submission
+
+**This work builds on Adversaria, the ongoing Laghari Labs project that
+Mohammad Hamza Laghari (Hamza) is building.** The meeting recorder, local notes,
+Copilot and Workspaces existed before today. This submission extends that project
+with two builds from the September 12, 2026 hackathon.
+
+**A meeting copilot that turns spoken commitments into reviewable work.**
+Adversaria listens to a meeting, offers answers grounded in your workspace,
+and catches promises such as “I will create an architecture diagram by Monday.”
+You decide which commitments become tasks. Agents draft the deliverable; you
+review it before marking it complete.
+
+### Why I built Adversaria
+
+As a lead AI engineer, I attend many meetings. The action items can take an hour
+or two apiece, and I also have my own projects to build. The meetings end, but
+the work keeps piling up.
+
+I built Adversaria to take my meeting notes, suggest what to talk about, and
+help carry the follow-up work into Spaces (called **Workspaces** in the app).
+There, I can build on the meeting context, research a question, or generate a
+solutions architecture diagram to review. The desktop's fully local mode keeps
+meeting audio, transcripts and model processing on my machine. Cloud models
+and web research are optional and require an explicit choice.
+
+### What I built today
+
+1. **Copilot + Spaces improvements.** I built on the existing Copilot and
+   Workspaces to catch spoken commitments during a meeting, let me approve them
+   as tasks, and follow their progress through to a draft. The compact companion
+   fits beside a call, and Workspaces previews generated architecture diagrams
+   so I can review the result and keep building on it.
+2. **Adversaria CLI.** I built a terminal edition that brings meeting capture,
+   Copilot suggestions, workspaces and task execution together using the
+   configured provider API keys: OpenRouter for speech and model responses,
+   Exa for web research, and optional direct OpenAI support. It can also run
+   tasks through an existing Codex login. This edition uses cloud services and
+   has its own local storage.
+
+See [HACKATHON.md](HACKATHON.md) for the detailed split between prior work and
+today's additions.
+
+**Why I built Adversaria, in eight slides:**
+[PDF](marketing/adversaria-story/output/adversaria-story.pdf),
+[editable PowerPoint](marketing/adversaria-story/output/adversaria-story-v3.pptx),
+or [browser presentation](marketing/adversaria-story/output/adversaria-story.html).
+The deck follows the Laghari Labs design and includes
+[presenter notes](marketing/adversaria-story/output/presenter-notes.md).
+
+### Run the terminal demo
+
+```bash
+git clone https://github.com/mhlaghari/adversaria-agents-everywhere.git
+cd adversaria-agents-everywhere
+./adversaria setup
+./adversaria
+```
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). Setup prompts privately
+for OpenRouter and Exa keys. Windows: `.\adversaria.ps1 setup`, then
+`.\adversaria.ps1`. No desktop build or local model downloads are required.
+
+The full-screen interface has **boxed transcript, Copilot suggestions, and
+commitment panes**, plus a command bar. It runs in a normal terminal or inside
+tmux. Run `./adversaria tmux` to create or attach a persistent tmux session
+(detach with Ctrl-B then D). Use a wide terminal to see the action menu beside all three panes.
+
+![Adversaria terminal: transcript, Copilot and commitments](cli/assets/terminal-demo.svg)
+
+*Interface rehearsal with simulated speech and a simulated model response.*
+
+### Two-minute walkthrough
+
+1. Press **K** to configure speech if needed, **A** to choose audio inputs, then
+   **R** to record. Captions appear in the transcript pane.
+2. Ask aloud, “What should we include in our architecture proposal?” Copilot
+   streams a suggested answer using recent conversation and attached evidence.
+   You can also press **/** and type `ask What should I say next?`, or
+   `search latest speech recognition research` to use Exa-backed evidence.
+3. Say, “I will create an architecture diagram by Monday.” The commitment appears
+   beside the transcript. Press **/** and type `approve c1` to queue it, or
+   `dismiss c1` to discard it. Nothing runs on a spoken promise alone.
+4. Press **S** to stop and save. **M** opens previous meetings. Press **:** to
+   enter the command companion, then `work` to run approved queued tasks,
+   `task artifact 1` to review the draft, and `task approve 1` to mark it done.
+
+Prepare grounded demo context beforehand:
+
+```bash
+./adversaria workspace create "Hackathon"
+./adversaria workspace attach cli/examples/context.md
+./adversaria
+```
+
+A microphone-free detector rehearsal is also available:
+`./adversaria replay cli/examples/meeting.txt`.
+
+### What powers it
+
+| Component | Role |
+| --- | --- |
+| OpenRouter | Cloud speech transcription and streaming model answers |
+| Exa | Explicit web research for questions and tasks using `--web` |
+| Codex | Optional task engine using an existing Codex login |
+| SQLite + workspace files | Meeting history, source evidence, queued tasks and artifacts |
+| prompt_toolkit | Boxed terminal dashboard, keyboard navigation and live panes |
+
+```text
+Microphone / loopback → speech transcription → live transcript
+                                             ├─ question → grounded Copilot answer
+                                             └─ commitment → user approval → queued task
+Workspace evidence + optional Exa research → agent draft → artifact review
+```
+
+### Scope and honest limitations
+
+The CLI and live commitment workflow are the hackathon additions. The desktop
+meeting recorder, local transcription and encrypted storage predate this work;
+[HACKATHON.md](HACKATHON.md) records the boundary. The desktop documentation follows
+below, and [cli/README.md](cli/README.md) contains the full terminal guide.
+
+The CLI uses cloud services and its own plaintext local storage; it does not read
+or synchronize the desktop database. Audio goes to the selected speech provider.
+OpenRouter transcription is request-based: a 400 ms pause closes speech, and
+continuous speech is segmented every four seconds. Provider processing and queue
+backlog add latency; these are **not word-by-word streaming captions**. Requests
+run concurrently with ordered caption delivery. A credentialed synthetic-speech
+rehearsal returned its first caption at 4.1 seconds and a completed Copilot answer
+at 5.3 seconds from audio playback start. Actual microphone latency varies; see
+[provider checks](cli/PROVIDER_CHECK.md). Channel labels identify
+microphone/loopback, not individual people. Capturing the other side requires
+routing call audio to a loopback input such as BlackHole.
+
+### Validation
+
+```bash
+uv run --project cli pytest cli/tests -q
+uv run --project cli ruff check cli
+uv run --project cli ruff format --check cli
+```
+
+Tests exercise cloud stream contracts, speech boundaries, commitment approval,
+workspace grounding, task lifecycle, keyboard navigation, final-caption saving,
+recovery after failures and terminal closure. UI rehearsals use explicitly
+simulated speech; they do not establish real microphone or provider latency.
+
+## Desktop edition
+
 > Formerly "Meeting Note Taker". The app/bundle is now **Adversaria** (a Laghari
 > Labs product). The on-disk data dir is still `meeting-note-taker`, so existing
 > meetings carry over unchanged.
@@ -28,6 +179,7 @@ One command per OS. It checks the toolchain (Node, Rust, uv, ffmpeg, Ollama), in
 
 ## Features
 
+- **Live commitments → workspace tasks** *(hackathon development slice, 2026-09-12; native rehearsal pending)* — confirmed meeting commitments appear in Copilot for **Approve** or **Dismiss**. Approve creates a task with a **Live** chip and makes it available to the workspace's agent engine; paused agents leave it queued until resumed. Nothing is created before approval. Use a Local workspace for the on-device demo.
 - **Record → transcribe → summarize**, fully on-device; the audio is deleted right after.
 - **A recording companion view** — while recording, the app collapses into a slim panel made for docking beside a call: record bar (timer · live audio level · Stop & summarize), an auto-scrolling live transcript, and your notes split 50/50 (or pick **Transcript-first** in Settings → Recording view to give the transcript the whole window, notes in a one-tap footer). Toggle recording from anywhere with **⌘⇧M** (macOS) / **Ctrl+Shift+M** (Windows); **⌘⇧N** jots a quick note.
 - **Live captions preview** — while you speak, grey English words appear within about half a second and revise as you go; at each pause the confirmed Whisper caption replaces them. Fully on-device: a 44 MB Moonshine model (sherpa-onnx) downloads once on first launch, with a status row in Settings → Transcription. English-only for now; other languages keep the confirmed captions.
