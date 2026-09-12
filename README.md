@@ -35,12 +35,13 @@ and web research are optional and require an explicit choice.
    as tasks, and follow their progress through to a draft. The compact companion
    fits beside a call, and Workspaces previews generated architecture diagrams
    so I can review the result and keep building on it.
-2. **Adversaria CLI.** I built a terminal edition that brings meeting capture,
-   Copilot suggestions, workspaces and task execution together using the
-   configured provider API keys: OpenRouter for speech and model responses,
-   Exa for web research, and optional direct OpenAI support. It can also run
-   tasks through an existing Codex login. This edition uses cloud services and
-   has its own local storage.
+2. **Adversaria CLI, built using OpenAI Codex.** I used Codex to build a terminal
+   edition that brings meeting capture, Copilot suggestions, workspaces and task
+   execution together. It integrates the hackathon sponsors **OpenRouter** for
+   speech transcription and model responses, and **Exa AI** for web search and
+   research, using their API keys. Optional direct OpenAI support and task
+   execution through an existing Codex login are also available. This edition
+   uses cloud services and has its own local storage.
 
 See [HACKATHON.md](HACKATHON.md) for the detailed split between prior work and
 today's additions.
@@ -104,9 +105,9 @@ A microphone-free detector rehearsal is also available:
 
 | Component | Role |
 | --- | --- |
-| OpenRouter | Cloud speech transcription and streaming model answers |
-| Exa | Automatic lookup for outside questions; explicit `search` / `--web` for research tasks |
-| Codex | Optional task engine using an existing Codex login |
+| OpenRouter | Hackathon sponsor integration: cloud speech transcription and streaming model answers |
+| Exa AI | Hackathon sponsor integration: automatic lookup for outside questions; explicit `search` / `--web` for research tasks |
+| OpenAI Codex | Used to build the CLI; also an optional task engine through an existing Codex login |
 | SQLite + workspace files | Meeting history, source evidence, queued tasks and artifacts |
 | prompt_toolkit | Boxed terminal dashboard, keyboard navigation and live panes |
 
