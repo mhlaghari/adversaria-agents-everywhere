@@ -46,12 +46,12 @@ and web research are optional and require an explicit choice.
 See [HACKATHON.md](HACKATHON.md) for the detailed split between prior work and
 today's additions.
 
-**Why I built Adversaria, in eight slides:**
-[PDF](marketing/adversaria-story/output/adversaria-story.pdf),
-[editable PowerPoint](marketing/adversaria-story/output/adversaria-story-v3.pptx),
-or [browser presentation](marketing/adversaria-story/output/adversaria-story.html).
-The deck follows the Laghari Labs design and includes
-[presenter notes](marketing/adversaria-story/output/presenter-notes.md).
+**Why I built Adversaria, in one slide:**
+[PDF](marketing/adversaria-story/output/adversaria-one-slide.pdf),
+[editable PowerPoint](marketing/adversaria-story/output/adversaria-one-slide.pptx),
+or [browser presentation](marketing/adversaria-story/output/adversaria-one-slide.html).
+One sentence in the Laghari Labs design: “Every meeting adds hours of follow-up
+while my own projects wait.” [Speaker notes and the original backup deck](marketing/adversaria-story/README.md).
 
 ### Run the terminal demo
 

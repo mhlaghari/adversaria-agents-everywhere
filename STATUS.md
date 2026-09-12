@@ -1,7 +1,7 @@
 # STATUS (hackathon repo)
 
-> **Current — 2026-09-12 15:44 GST: README updates pushed through `d76292e`;
-> previous memory refresh pushed as `bffc03d`. Existing slide links shared; no new slide version created.
+> **Current — 2026-09-12 15:49 GST: one-slide presentation built and checked.
+> README presentation links now select the concise version.
 > Latest founder deadline: 16:30 GST.**
 
 | Work | Status | Evidence / next step |
@@ -9,8 +9,8 @@
 | Desktop screenshot in README | Pushed | Existing meeting-note screenshot, accurately captioned; `53bcbf1` |
 | CLI built with Codex; OpenRouter and Exa AI sponsor credits | Pushed | README wording and integration table; `d76292e`; whitespace checks passed |
 | Automatic Exa and AI Tinkerers answer fix | Pushed and installed | `3b4df85`; 75 CLI tests and live synthetic/public regression checks passed |
-| One-sentence pain-point slide | Brainstorming | Suggested: "Every meeting leaves me with hours of follow-up, while my own projects wait." No deck edits made |
-| Existing Laghari Labs presentation | Ready; links shared | Eight reviewed slides: [PDF](marketing/adversaria-story/output/adversaria-story.pdf), [PowerPoint](marketing/adversaria-story/output/adversaria-story-v3.pptx); offline HTML and notes also available |
+| One-sentence pain-point slide | Ready | "Every meeting adds hours of follow-up while my own projects wait." [PDF](marketing/adversaria-story/output/adversaria-one-slide.pdf), [PowerPoint](marketing/adversaria-story/output/adversaria-one-slide.pptx), [HTML](marketing/adversaria-story/output/adversaria-one-slide.html), PNG and speaker notes; one-slide/package/layout/import and visual checks passed |
+| Original Laghari Labs presentation | Backup | Eight reviewed slides retained in the presentation directory |
 | Separate CLI workspace dashboard changes | In progress; uncommitted and unverified here | Dashboard imports workspace/task navigation and background review controls; store revision method and dashboard tests added. Coordinate with owning worker, then verify before publishing |
 | Demo rehearsal and submission | Next | Rehearse against the latest stated 16:30 GST deadline; a repo push does not submit the entry |
 

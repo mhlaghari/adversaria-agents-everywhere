@@ -1,7 +1,24 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
-> **CURRENT — 2026-09-12 15:44 GST: README screenshot and Codex/sponsor credits
-> committed and pushed to `origin/main`; presentation simplification is still a proposal.**
+> **CURRENT — 2026-09-12 15:49 GST: the founder requested an actual slide update.
+> One-slide presentation created; README links now select it by default.**
+
+- [One-slide PDF](marketing/adversaria-story/output/adversaria-one-slide.pdf),
+  [editable PowerPoint](marketing/adversaria-story/output/adversaria-one-slide.pptx),
+  [offline HTML](marketing/adversaria-story/output/adversaria-one-slide.html) and
+  [PNG](marketing/adversaria-story/output/adversaria-one-slide.png) are ready.
+  Copy: "Every meeting adds hours of follow-up while my own projects wait."
+  Large Silkscreen type, cream, fire red, yellow highlight and hard black frame
+  follow the supplied Laghari Labs reference. Detail moved into speaker notes.
+- Story-review agent tightened the sentence. PowerPoint package/layout/import
+  checks passed for exactly one slide; final PPTX and PDF were rendered and
+  visually checked. HTML has no text overflow and its notes shortcut works.
+- Next: open the new PDF or HTML, deliver the sentence and move into the live
+  Copilot/Workspaces/CLI demo. The latest founder deadline is **16:30 GST**.
+  The original eight-slide deck remains as backup. This supersedes the earlier
+  notes saying the one-slide version was only a proposal.
+
+> **README CHECKPOINT — 2026-09-12: screenshot and Codex/sponsor credits pushed.**
 
 - README now shows the existing desktop meeting-note screenshot from
   `marketing/product-demo/assets/real-note.png`, captioned accurately as the
@@ -9,16 +26,6 @@
 - README explicitly says the CLI was built using **OpenAI Codex** and integrates
   hackathon sponsors **OpenRouter** for speech/model responses and **Exa AI** for
   search/research (`d76292e`). Whitespace checks passed; these were documentation edits.
-- The founder is brainstorming a single pain-point slide. Suggested sentence:
-  "Every meeting leaves me with hours of follow-up, while my own projects wait."
-  No slide files changed; the reviewed eight-slide deck remains available as backup.
-  This was reiterated when the founder asked what the new slides were; the
-  one-slide version has not been built.
-- Shared the existing [PDF](marketing/adversaria-story/output/adversaria-story.pdf)
-  and [editable PowerPoint](marketing/adversaria-story/output/adversaria-story-v3.pptx)
-  when the founder asked where the slides were. That reply made no code or deck edits.
-- Next: settle the presentation format and rehearse the live demo. The founder's
-  latest stated deadline is **16:30 GST**, superseding the earlier timing below.
 - Separate working-tree work is present in `cli/adversaria_cli/dashboard.py`,
   `cli/adversaria_cli/store.py`, `cli/tests/test_dashboard.py` and new
   `cli/adversaria_cli/workspace_dashboard.py`. The dashboard now imports the new
