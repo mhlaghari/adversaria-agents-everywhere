@@ -1,0 +1,67 @@
+/* Workspaces detail view: inline diagram preview + compact layout through
+   1120px (Astra layouts, 2026-09-12). Kept out of prototype.css on purpose. */
+
+.ws-task-inline-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+.ws-diagram-preview {
+  display: block;
+  width: 100%;
+  height: 240px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.ws-disclosure > summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ws-disclosure[open] > summary {
+  margin-bottom: 12px;
+}
+
+.ws-approve-label {
+  display: none;
+}
+
+@media (max-width: 1120px) {
+  .ws-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-task-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+
+  .ws-task-action-button--approve {
+    width: auto;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .ws-task-action-button--approve svg {
+    display: none;
+  }
+
+  .ws-approve-label {
+    display: inline;
+  }
+}

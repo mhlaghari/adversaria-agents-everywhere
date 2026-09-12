@@ -5510,6 +5510,34 @@ fn create_workspace_on(conn: &Connection, name: &str, color: &str) -> anyhow::Re
     Ok(workspace)
 }
 
+/// Prefer the recording folder's namesake, otherwise reuse/create Live meetings.
+pub(crate) fn commitment_workspace_on(
+    conn: &Connection,
+    folder_id: Option<i64>,
+) -> anyhow::Result<Workspace> {
+    let folder = folder_id
+        .map(|id| get_folder_on(conn, id))
+        .transpose()?
+        .flatten();
+    let workspaces = list_workspaces_on(conn)?;
+    if let Some(folder) = folder {
+        if let Some(summary) = workspaces
+            .iter()
+            .find(|summary| summary.workspace.name.to_lowercase() == folder.name.to_lowercase())
+        {
+            return Ok(summary.workspace.clone());
+        }
+    }
+    if let Some(summary) = workspaces
+        .into_iter()
+        .find(|summary| summary.workspace.name.eq_ignore_ascii_case("Live meetings"))
+    {
+        return Ok(summary.workspace);
+    }
+    // create_workspace's shared implementation defaults the engine to local.
+    create_workspace_on(conn, "Live meetings", "blue")
+}
+
 /// Return all workspaces with the counts displayed on their cards.
 pub fn list_workspaces() -> anyhow::Result<Vec<WorkspaceSummary>> {
     let conn = connect()?;
@@ -5615,7 +5643,7 @@ pub fn list_addons() -> anyhow::Result<Vec<WorkspaceAddon>> {
     list_addons_on(&conn)
 }
 
-fn list_addons_on(conn: &Connection) -> anyhow::Result<Vec<WorkspaceAddon>> {
+pub(crate) fn list_addons_on(conn: &Connection) -> anyhow::Result<Vec<WorkspaceAddon>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, slug, name, description, instructions, builtin, created_at
            FROM workspace_addons
@@ -6408,7 +6436,7 @@ pub fn create_workspace_task(
     )
 }
 
-fn create_workspace_task_on(
+pub(crate) fn create_workspace_task_on(
     conn: &Connection,
     workspace_id: i64,
     title: &str,
@@ -6582,7 +6610,7 @@ pub fn set_task_staffing(task_id: i64, staffing: &TaskStaffing) -> anyhow::Resul
     set_task_staffing_on(&conn, task_id, staffing)
 }
 
-fn set_task_staffing_on(
+pub(crate) fn set_task_staffing_on(
     conn: &Connection,
     task_id: i64,
     staffing: &TaskStaffing,
@@ -8622,6 +8650,32 @@ mod tests {
             workspace_meeting_ids_on(&conn).unwrap(),
             vec![(first.id, 7), (second.id, 8)]
         );
+    }
+
+    #[test]
+    fn workspace_rule_folder_name_then_live_meetings() {
+        let conn = in_memory_db();
+        let folder = create_folder_on(&conn, "Procurement", "blue").unwrap();
+        let live = commitment_workspace_on(&conn, Some(folder.id)).unwrap();
+        assert_eq!(live.name, "Live meetings");
+        assert_eq!(live.engine, "local");
+        assert_eq!(commitment_workspace_on(&conn, None).unwrap().id, live.id);
+        assert_eq!(
+            commitment_workspace_on(&conn, Some(999)).unwrap().id,
+            live.id
+        );
+        conn.execute(
+            "UPDATE workspaces SET name = 'LIVE MEETINGS' WHERE id = ?1",
+            [live.id],
+        )
+        .unwrap();
+        assert_eq!(commitment_workspace_on(&conn, None).unwrap().id, live.id);
+        let named = create_workspace_on(&conn, "pRoCuReMeNt", "green").unwrap();
+        set_workspace_engine_on(&conn, named.id, "codex").unwrap();
+        let selected = commitment_workspace_on(&conn, Some(folder.id)).unwrap();
+        assert_eq!(selected.id, named.id);
+        assert_eq!(selected.engine, "codex");
+        assert_eq!(list_workspaces_on(&conn).unwrap().len(), 2);
     }
 
     #[test]

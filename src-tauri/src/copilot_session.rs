@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager};
@@ -13,8 +13,9 @@ use tokio_util::sync::CancellationToken;
 use crate::commands::AppState;
 use crate::http_client::{CopilotAnswerRequest, CopilotFrame};
 use crate::types::{
-    CopilotAnswerEvent, CopilotCard, CopilotCitation, CopilotCommandAck, CopilotEgressPassage,
-    CopilotFolderReadiness, CopilotLiveContext, CopilotPassage, CopilotSections, RecentCard,
+    Commitment, CommitmentEvent, CommitmentResult, CopilotAnswerEvent, CopilotCard,
+    CopilotCitation, CopilotCommandAck, CopilotEgressPassage, CopilotFolderReadiness,
+    CopilotLiveContext, CopilotPassage, CopilotSections, RecentCard,
 };
 
 pub const MAX_QUESTION_CHARS: usize = 2000;
@@ -39,6 +40,87 @@ const SESSION_FOLDER_MISMATCH: &str = "Copilot session does not match this folde
 const WEB_CONSENT_SAVE_FAILED: &str = "Could not save folder web consent";
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com";
 const DEEPSEEK_MODEL: &str = "deepseek-v4-flash";
+
+pub const COMMITMENT_PATTERNS: &[&str] = &[
+    r"^(i|i'll|i will|i can|i could|i'm going to|i am going to|let me)\s+(send|share|prepare|write|draft|check|look into|find out|book|schedule|set up|follow up|circulate|review|update|create|put together|get|ask|confirm|draw|draw up|sketch|build|make|map out|diagram)\b",
+    r"^(we'll|we will|we need to|we should|we have to|let's|lets)\s+(send|share|prepare|write|draft|check|look into|find out|book|schedule|set up|follow up|circulate|review|update|create|put together|get|ask|confirm|draw|draw up|sketch|build|make|map out|diagram)\b",
+    r"\b(action item|to[- ]?do|follow[- ]?up)\s*[:\-]\s*\S",
+];
+
+fn detect_commitment(text: &str, source: &str) -> Option<(String, Option<String>, Option<String>)> {
+    static PATTERNS: OnceLock<Vec<regex::Regex>> = OnceLock::new();
+    static OWNER: OnceLock<regex::Regex> = OnceLock::new();
+    static DEADLINE: OnceLock<regex::Regex> = OnceLock::new();
+    let text = text.trim();
+    if text.ends_with('?')
+        || !PATTERNS
+            .get_or_init(|| {
+                COMMITMENT_PATTERNS
+                    .iter()
+                    .map(|pattern| {
+                        regex::RegexBuilder::new(pattern)
+                            .case_insensitive(true)
+                            .build()
+                            .unwrap()
+                    })
+                    .collect()
+            })
+            .iter()
+            .any(|pattern| pattern.is_match(text))
+    {
+        return None;
+    }
+    // Keep the name capture case-sensitive so ordinary words are not owners.
+    let owner = OWNER
+        .get_or_init(|| regex::Regex::new(r"\b(to|for|with)\s+([A-Z][a-z]{2,})\b").unwrap())
+        .captures(text)
+        .map(|captures| captures[2].to_string())
+        .or_else(|| source.eq_ignore_ascii_case("Me").then(|| "Me".to_string()));
+    let deadline = DEADLINE
+        .get_or_init(|| regex::Regex::new(r"(?i)\b(by|before|on)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|tonight|end of (the )?(day|week|month)|eod|eow|next week)\b").unwrap())
+        .find(text)
+        .map(|matched| matched.as_str().to_string());
+    Some((text.to_string(), owner, deadline))
+}
+
+fn commitment_capability(text: &str) -> &'static str {
+    static VISUALIZE: OnceLock<regex::Regex> = OnceLock::new();
+    static PRESENT: OnceLock<regex::Regex> = OnceLock::new();
+    static ACTION: OnceLock<regex::Regex> = OnceLock::new();
+    // Nouns win over the leading verb: "draft the deck" is a deck, not a draft.
+    // A diagram beats a deck when a sentence mentions both.
+    if VISUALIZE
+        .get_or_init(|| {
+            regex::Regex::new(r"(?i)\b(diagram|draw(ing)?|sketch|chart|flowchart|visuali[sz]e|mock ?up|wireframe|solutions architecture|system design)\b").unwrap()
+        })
+        .is_match(text)
+    {
+        return "visualize";
+    }
+    if PRESENT
+        .get_or_init(|| regex::Regex::new(r"(?i)\b(deck|slides?|presentation)\b").unwrap())
+        .is_match(text)
+    {
+        return "present";
+    }
+    let pattern = ACTION.get_or_init(|| {
+        regex::Regex::new(concat!(
+            r"(?i)(?:^(?:i|i'll|i will|i can|i could|i'm going to|i am going to|let me|we'll|we will|we need to|we should|we have to|let's|lets)\s+",
+            r"|\b(?:action item|to[- ]?do|follow[- ]?up)\s*[:\-]\s*)",
+            r"(check|look into|find out|review|confirm|ask|\S+)\b"
+        )).unwrap()
+    });
+    if pattern.captures(text.trim()).is_some_and(|captures| {
+        matches!(
+            captures[1].to_ascii_lowercase().as_str(),
+            "check" | "look into" | "find out" | "review" | "confirm" | "ask"
+        )
+    }) {
+        "research"
+    } else {
+        "write"
+    }
+}
 
 /// Thread-safe state owned by the one `AppState.copilot` mutex.
 #[derive(Default)]
@@ -120,6 +202,9 @@ pub struct CopilotSession {
     pub folder_id: Option<i64>,
     pub mode_at_start: String,
     pub started_at: Instant,
+    started_at_local: chrono::DateTime<chrono::Local>,
+    pub commitments: Vec<Commitment>,
+    approved_commitments: HashMap<u64, CommitmentResult>,
     pub token: CancellationToken,
     pub notify: Arc<Notify>,
     next_card_id: u64,
@@ -243,6 +328,9 @@ impl CopilotSession {
             folder_id,
             mode_at_start,
             started_at: Instant::now(),
+            started_at_local: chrono::Local::now(),
+            commitments: Vec::new(),
+            approved_commitments: HashMap::new(),
             token: CancellationToken::new(),
             notify: Arc::new(Notify::new()),
             next_card_id: 1,
@@ -365,13 +453,43 @@ impl CopilotSession {
             &mut self.pending_me_chunks
         };
         chunks.push(text.to_string());
-        if boundary == "forced" {
+        if boundary != "silence" {
             return None;
         }
         let joined = chunks.join(" ");
         chunks.clear();
         let joined = crate::copilot_provenance::truncate_word_boundary(&joined, MAX_QUESTION_CHARS);
         (!joined.is_empty()).then_some(joined)
+    }
+
+    fn catch_commitment(&mut self, text: &str, source: &str) -> Option<CommitmentEvent> {
+        let (text, owner, deadline) = detect_commitment(text, source)?;
+        let capability = commitment_capability(&text).to_string();
+        let normalized = Self::norm(&text);
+        let at_ms = self.started_at.elapsed().as_millis() as u64;
+        if self.commitments.iter().rev().any(|commitment| {
+            Duration::from_millis(at_ms.saturating_sub(commitment.at_ms)) < AUTO_DUPLICATE_WINDOW
+                && Self::norm(&commitment.text) == normalized
+        }) {
+            return None;
+        }
+        let commitment = Commitment {
+            id: self.commitments.len() as u64 + 1,
+            text,
+            owner,
+            deadline,
+            source: if source.eq_ignore_ascii_case("Me") {
+                "Me"
+            } else {
+                "Them"
+            }
+            .into(),
+            at_ms,
+            state: "caught".into(),
+            capability,
+        };
+        self.commitments.push(commitment.clone());
+        Some(commitment_event(&self.session_id, &commitment, None, false))
     }
 
     fn accept_waiting(&mut self, job: CopilotJob) -> Option<CopilotJob> {
@@ -1205,6 +1323,10 @@ fn on_caption(app: &AppHandle, epoch: u64, text: &str, boundary: &str, source: &
             }
             _ => None,
         };
+        if let Some(mut event) = session.catch_commitment(&turn, speaker) {
+            event.agents_paused = crate::config::load_config().agents_paused;
+            let _ = app.emit("copilot-commitment", &event);
+        }
         session.push_dialogue_turn(speaker, &turn);
         if speaker == "Them" {
             session.last_them = Some(turn.clone());
@@ -1241,6 +1363,137 @@ pub fn on_them_caption(app: &AppHandle, epoch: u64, text: &str, boundary: &str) 
 
 pub fn on_me_caption(app: &AppHandle, epoch: u64, text: &str, boundary: &str) {
     on_caption(app, epoch, text, boundary, "me");
+}
+
+fn commitment_event(
+    session_id: &str,
+    commitment: &Commitment,
+    result: Option<&CommitmentResult>,
+    agents_paused: bool,
+) -> CommitmentEvent {
+    CommitmentEvent {
+        session_id: session_id.into(),
+        commitment: commitment.clone(),
+        task_id: result.map(|result| result.task.id),
+        run_queued: result.is_some_and(|result| result.run_queued),
+        agents_paused: result.map_or(agents_paused, |result| result.agents_paused),
+    }
+}
+
+fn commitment_session<'a>(
+    copilot: &'a mut CopilotState,
+    session_id: &str,
+) -> Result<&'a mut CopilotSession, String> {
+    copilot
+        .session
+        .as_mut()
+        .filter(|session| session.session_id == session_id && !session_id.trim().is_empty())
+        .ok_or_else(|| SESSION_NOT_ACTIVE.to_string())
+}
+
+/// The caller holds the session mutex through creation, preventing double approval.
+/// All writes share the ordinary workspace storage path and one transaction.
+pub(crate) fn approve_commitment_on(
+    conn: &rusqlite::Connection,
+    copilot: &mut CopilotState,
+    session_id: &str,
+    id: u64,
+    capability: Option<&str>,
+    agents_paused: bool,
+) -> Result<(CommitmentResult, CommitmentEvent), String> {
+    let session = commitment_session(copilot, session_id)?;
+    let commitment = session
+        .commitments
+        .iter_mut()
+        .find(|commitment| commitment.id == id)
+        .ok_or_else(|| "Commitment not found".to_string())?;
+    if let Some(result) = session.approved_commitments.get(&id) {
+        return Ok((
+            result.clone(),
+            commitment_event(session_id, commitment, Some(result), agents_paused),
+        ));
+    }
+    if commitment.state != "caught" {
+        return Err("Only a caught commitment can be approved".into());
+    }
+    let capability = capability
+        .map(str::trim)
+        .filter(|capability| !capability.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| commitment.capability.clone());
+    let capability = capability.as_str();
+    if !matches!(capability, "research" | "write" | "visualize" | "present") {
+        return Err(format!("Unknown task capability: {capability}"));
+    }
+    let title: String = commitment.text.trim().chars().take(120).collect();
+    let caught_at =
+        session.started_at_local + chrono::Duration::milliseconds(commitment.at_ms as i64);
+    let details = format!(
+        "Caught live during the meeting at {} from {}.\nOwner: {}. Deadline: {}.\nSession: {}",
+        caught_at.format("%H:%M"),
+        commitment.source,
+        commitment.owner.as_deref().unwrap_or("Me"),
+        commitment.deadline.as_deref().unwrap_or("none"),
+        session_id,
+    );
+    let task = (|| -> anyhow::Result<_> {
+        let transaction = conn.unchecked_transaction()?;
+        let workspace = crate::storage::commitment_workspace_on(&transaction, session.folder_id)?;
+        let meeting_id = crate::storage::copilot_session_meeting_id(&transaction, session_id)?;
+        let task = crate::storage::create_workspace_task_on(
+            &transaction,
+            workspace.id,
+            &title,
+            &details,
+            capability,
+            meeting_id,
+            None,
+        )?;
+        let catalog = crate::storage::list_addons_on(&transaction)?;
+        let staffing = crate::commands::capability_task_staffing(
+            &task.title,
+            &task.details,
+            capability,
+            &catalog,
+        );
+        crate::storage::set_task_staffing_on(&transaction, task.id, &staffing)?;
+        transaction.commit()?;
+        Ok(task)
+    })()
+    .map_err(|error| format!("Could not create commitment task: {error}"))?;
+    let result = CommitmentResult {
+        task,
+        run_queued: !agents_paused,
+        agents_paused,
+    };
+    commitment.state = "approved".into();
+    let event = commitment_event(session_id, commitment, Some(&result), agents_paused);
+    session.approved_commitments.insert(id, result.clone());
+    Ok((result, event))
+}
+
+pub(crate) fn dismiss_commitment(
+    copilot: &mut CopilotState,
+    session_id: &str,
+    id: u64,
+    agents_paused: bool,
+) -> Result<CommitmentEvent, String> {
+    let session = commitment_session(copilot, session_id)?;
+    let commitment = session
+        .commitments
+        .iter_mut()
+        .find(|commitment| commitment.id == id)
+        .ok_or_else(|| "Commitment not found".to_string())?;
+    if commitment.state == "approved" {
+        return Err("An approved commitment cannot be dismissed".into());
+    }
+    commitment.state = "dismissed".into();
+    Ok(commitment_event(
+        session_id,
+        commitment,
+        None,
+        agents_paused,
+    ))
 }
 
 fn select_last_question(
@@ -2351,6 +2604,496 @@ fn classify_error(error: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commitment_detector_fixtures() {
+        for (text, owner, deadline, capability) in [
+            (
+                "I'll send the numbers to Wael by Monday",
+                Some("Wael"),
+                Some("by Monday"),
+                "write",
+            ),
+            (
+                "Let's get the deck to Naema before Friday",
+                Some("Naema"),
+                Some("before Friday"),
+                "present",
+            ),
+            (
+                "We need to check the SIDRA thresholds",
+                None,
+                None,
+                "research",
+            ),
+            (
+                "Action item: draft the procurement policy summary",
+                None,
+                None,
+                "write",
+            ),
+            (
+                "I can put together a comparison of the two rerankers by end of week",
+                None,
+                Some("by end of week"),
+                "write",
+            ),
+        ] {
+            let detected = detect_commitment(text, "Them").expect(text);
+            assert_eq!(
+                detected,
+                (
+                    text.into(),
+                    owner.map(str::to_string),
+                    deadline.map(str::to_string)
+                ),
+                "{text}"
+            );
+            assert_eq!(commitment_capability(text), capability, "{text}");
+        }
+        for text in [
+            "Can you send me the numbers?",
+            "What did we decide about the deck?",
+            "I think we should be careful here",
+            "Let me think about that",
+            "I'll be honest, it did not work",
+            "I'll send the numbers?  ",
+            "  ",
+        ] {
+            assert!(detect_commitment(text, "Them").is_none(), "{text}");
+        }
+    }
+
+    #[test]
+    fn commitment_captures_case_deadlines_and_capability_verbs() {
+        let detected =
+            detect_commitment("  WE SHOULD REVIEW this for Naema BY EOD  ", "Me").unwrap();
+        assert_eq!(detected.0, "WE SHOULD REVIEW this for Naema BY EOD");
+        assert_eq!(detected.1.as_deref(), Some("Naema"));
+        assert_eq!(detected.2.as_deref(), Some("BY EOD"));
+        assert_eq!(
+            detect_commitment("I'll write the brief for tomorrow", "Me")
+                .unwrap()
+                .1
+                .as_deref(),
+            Some("Me")
+        );
+        assert_eq!(
+            detect_commitment("I'll write the brief for tomorrow", "Them")
+                .unwrap()
+                .1,
+            None
+        );
+        for deadline in [
+            "by Monday",
+            "before Tuesday",
+            "on Wednesday",
+            "by Thursday",
+            "by Friday",
+            "by Saturday",
+            "by Sunday",
+            "by tomorrow",
+            "by today",
+            "by tonight",
+            "by end of the day",
+            "before end of week",
+            "on end of the month",
+            "by eod",
+            "by eow",
+            "by next week",
+        ] {
+            assert_eq!(
+                detect_commitment(&format!("I'll send it {deadline}"), "Me")
+                    .unwrap()
+                    .2
+                    .as_deref(),
+                Some(deadline)
+            );
+        }
+        for verb in ["check", "look into", "find out", "review", "confirm", "ask"] {
+            for prefix in [
+                "I'll",
+                "We need to",
+                "Action item:",
+                "Follow-up -",
+                "To-do:",
+            ] {
+                let text = format!("{prefix} {verb} the details");
+                assert!(detect_commitment(&text, "Them").is_some(), "{text}");
+                assert_eq!(commitment_capability(&text), "research", "{text}");
+            }
+        }
+        assert_eq!(
+            commitment_capability("I'll write a review of the proposal"),
+            "write"
+        );
+        assert_eq!(
+            commitment_capability("I'll send the follow-up: check the numbers"),
+            "write"
+        );
+        // Diagram / deck nouns decide the capability before the leading verb,
+        // whether or not the detector's verb list would catch the sentence.
+        for (text, expected) in [
+            (
+                "I'll draw up the solutions architecture diagram for the ERDC pipeline by Thursday",
+                "visualize",
+            ),
+            (
+                "We need a diagram of the ingestion flow before Friday",
+                "visualize",
+            ),
+            ("Let me sketch the architecture for Wael", "visualize"),
+            (
+                "I'll put together a flowchart of the approval steps",
+                "visualize",
+            ),
+            ("Action item: mock up the dashboard chart", "visualize"),
+            (
+                "I'll draft the deck and the architecture diagram",
+                "visualize",
+            ),
+            ("I'll get the deck to Naema by Monday", "present"),
+            ("We need slides for the review", "present"),
+            ("I'll share the presentation by Friday", "present"),
+            ("I'll send the numbers to Wael by Monday", "write"),
+            ("I'll draft the brief", "write"),
+            ("I'll withdraw the request", "write"),
+            ("I'll check the thresholds", "research"),
+            ("I'll review the charter", "research"),
+        ] {
+            assert_eq!(commitment_capability(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn commitments_wait_for_silence_on_both_channels() {
+        let mut session = session();
+        assert!(!session.mic_questions);
+        assert!(session
+            .assemble_caption("me", "I'll send the numbers", "forced")
+            .is_none());
+        assert!(session
+            .assemble_caption("them", "We need to check", "forced")
+            .is_none());
+        assert!(session.commitments.is_empty());
+        let turn = session
+            .assemble_caption("me", "to Wael by Monday", "silence")
+            .unwrap();
+        let event = session.catch_commitment(&turn, "Me").unwrap();
+        assert_eq!(
+            event.commitment.text,
+            "I'll send the numbers to Wael by Monday"
+        );
+        assert_eq!(event.commitment.source, "Me");
+        assert_eq!(event.commitment.state, "caught");
+        assert_eq!(event.task_id, None);
+        assert!(!event.run_queued);
+        let turn = session
+            .assemble_caption("them", "the SIDRA thresholds", "silence")
+            .unwrap();
+        let event = session.catch_commitment(&turn, "Them").unwrap();
+        assert_eq!(event.commitment.source, "Them");
+        assert_eq!(event.commitment.owner, None);
+        assert_eq!(session.commitments.len(), 2);
+    }
+
+    #[test]
+    fn commitment_dedup_is_normalized_across_sources_for_sixty_seconds() {
+        let mut session = session();
+        session
+            .catch_commitment("I'll send the numbers.", "Me")
+            .unwrap();
+        assert!(session
+            .catch_commitment("  I'LL SEND   THE NUMBERS!", "Them")
+            .is_none());
+        session.commitments[0].state = "dismissed".into();
+        assert!(session
+            .catch_commitment("I'll send the numbers", "Them")
+            .is_none());
+        session.started_at = Instant::now() - AUTO_DUPLICATE_WINDOW - Duration::from_secs(1);
+        assert_eq!(
+            session
+                .catch_commitment("I'll send the numbers", "Them")
+                .unwrap()
+                .commitment
+                .id,
+            2
+        );
+    }
+
+    fn caught_commitment_state(text: &str) -> (CopilotState, String) {
+        let mut session = session();
+        session.catch_commitment(text, "Them").unwrap();
+        let id = session.session_id.clone();
+        (
+            CopilotState {
+                session: Some(session),
+            },
+            id,
+        )
+    }
+
+    #[test]
+    fn caught_commitment_carries_its_inferred_capability() {
+        // The card shows this before the user taps Approve, so the detector's
+        // guess has to travel on the event rather than being recomputed later.
+        for (text, expected) in [
+            (
+                "I'll draw up the solutions architecture diagram for the ERDC pipeline by Thursday",
+                "visualize",
+            ),
+            (
+                "Let me sketch the ingestion flow for Wael before Friday",
+                "visualize",
+            ),
+            ("I'll send the numbers to Wael by Monday", "write"),
+            ("I'll check the SIDRA thresholds before Friday", "research"),
+            ("I'll review the manual tomorrow", "research"),
+            ("I'll draft the brief", "write"),
+            (
+                "I'll put together a flowchart of the approval steps",
+                "visualize",
+            ),
+            ("I'll get the deck to Naema by Monday", "present"),
+            ("We need to prepare slides for the review", "present"),
+        ] {
+            let mut session = session();
+            let event = session.catch_commitment(text, "Them").expect(text);
+            assert_eq!(event.commitment.capability, expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn approve_honours_a_capability_the_user_corrected() {
+        let conn = crate::storage::in_memory_db();
+        // Detector says "write"; the user picks Research on the card.
+        let (mut copilot, session_id) =
+            caught_commitment_state("I'll send the numbers to Wael by Monday");
+        let (result, event) =
+            approve_commitment_on(&conn, &mut copilot, &session_id, 1, Some("research"), false)
+                .unwrap();
+        assert_eq!(result.task.capability, "research");
+        assert_eq!(event.commitment.capability, "write");
+    }
+
+    #[test]
+    fn commitment_approve_creates_task_and_queues() {
+        let conn = crate::storage::in_memory_db();
+        for (text, capability, owner, deadline) in [
+            (
+                "I'll send the numbers to Wael by Monday",
+                "write",
+                "Wael",
+                "by Monday",
+            ),
+            (
+                "We need to check the SIDRA thresholds",
+                "research",
+                "Me",
+                "none",
+            ),
+        ] {
+            let (mut copilot, session_id) = caught_commitment_state(text);
+            let time = copilot
+                .session
+                .as_ref()
+                .unwrap()
+                .started_at_local
+                .format("%H:%M")
+                .to_string();
+            let (result, event) =
+                approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, false).unwrap();
+            assert_eq!(result.task.title, text);
+            assert_eq!(result.task.details, format!("Caught live during the meeting at {time} from Them.\nOwner: {owner}. Deadline: {deadline}.\nSession: {session_id}"));
+            assert_eq!(result.task.capability, capability);
+            assert_eq!(result.task.status, "queued");
+            assert!(result.task.agent_eligible);
+            assert_eq!(result.task.source_meeting_id, None);
+            assert_eq!(result.task.action_item_id, None);
+            assert!(result.run_queued);
+            assert!(!result.agents_paused);
+            assert_eq!(
+                copilot.session.as_ref().unwrap().commitments[0].state,
+                "approved"
+            );
+            let stored: (String, String, String) = conn
+                .query_row(
+                    "SELECT details, capability, status FROM workspace_tasks WHERE id = ?1",
+                    [result.task.id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(
+                stored,
+                (
+                    result.task.details.clone(),
+                    capability.into(),
+                    "queued".into()
+                )
+            );
+            let payload = serde_json::to_value(event).unwrap();
+            assert_eq!(payload["session_id"], session_id);
+            assert_eq!(payload["id"], 1);
+            assert_eq!(payload["text"], text);
+            assert_eq!(payload["state"], "approved");
+            assert_eq!(payload["task_id"], result.task.id);
+            assert_eq!(payload["run_queued"], true);
+            assert_eq!(payload["agents_paused"], false);
+            assert_eq!(payload["source"], "Them");
+            assert!(payload["at_ms"].is_u64());
+            assert_eq!(
+                payload["owner"],
+                if owner == "Me" {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::json!(owner)
+                }
+            );
+            assert_eq!(
+                payload["deadline"],
+                if deadline == "none" {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::json!(deadline)
+                }
+            );
+            assert_eq!(payload["capability"], result.task.capability);
+            assert_eq!(payload.as_object().unwrap().len(), 12);
+        }
+    }
+
+    #[test]
+    fn commitment_approve_when_paused_queues_only() {
+        let conn = crate::storage::in_memory_db();
+        let (mut copilot, session_id) = caught_commitment_state("I'll draft the brief");
+        let (result, event) =
+            approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, true).unwrap();
+        assert_eq!(result.task.status, "queued");
+        assert!(result.task.agent_eligible);
+        assert!(!result.run_queued);
+        assert!(result.agents_paused);
+        assert!(!event.run_queued);
+        assert!(event.agents_paused);
+        assert_eq!(event.task_id, Some(result.task.id));
+        assert_eq!(event.commitment.state, "approved");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_runs", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn commitment_dismiss_marks_dismissed() {
+        let conn = crate::storage::in_memory_db();
+        let (mut copilot, session_id) = caught_commitment_state("I'll draft the brief");
+        let event = dismiss_commitment(&mut copilot, &session_id, 1, false).unwrap();
+        assert_eq!(event.commitment.state, "dismissed");
+        assert_eq!(event.task_id, None);
+        assert!(!event.run_queued);
+        assert_eq!(
+            copilot.session.as_ref().unwrap().commitments[0].state,
+            "dismissed"
+        );
+        assert!(dismiss_commitment(&mut copilot, &session_id, 1, false).is_ok());
+        assert!(approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, false).is_err());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_tasks", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspaces", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn commitment_approval_is_idempotent_and_rejects_stale_or_invalid_requests() {
+        let conn = crate::storage::in_memory_db();
+        let (mut copilot, session_id) = caught_commitment_state("I'll draft the brief");
+        assert!(approve_commitment_on(&conn, &mut copilot, "stale", 1, None, false).is_err());
+        assert!(dismiss_commitment(&mut copilot, "stale", 1, false).is_err());
+        assert!(approve_commitment_on(&conn, &mut copilot, &session_id, 99, None, false).is_err());
+        assert!(dismiss_commitment(&mut copilot, &session_id, 99, false).is_err());
+        assert!(
+            approve_commitment_on(&conn, &mut copilot, &session_id, 1, Some("unknown"), false)
+                .is_err()
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspaces", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        let (first, _) =
+            approve_commitment_on(&conn, &mut copilot, &session_id, 1, Some("research"), false)
+                .unwrap();
+        let (second, event) =
+            approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, false).unwrap();
+        assert_eq!(first.task.id, second.task.id);
+        assert_eq!(second.task.capability, "research");
+        assert_eq!(event.task_id, Some(first.task.id));
+        assert!(dismiss_commitment(&mut copilot, &session_id, 1, false).is_err());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_tasks", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn commitment_approval_links_known_meeting_and_truncates_unicode_title() {
+        let conn = crate::storage::in_memory_db();
+        conn.execute(
+            "INSERT INTO meetings (title, recorded_at) VALUES ('Current meeting', 'now')",
+            [],
+        )
+        .unwrap();
+        let meeting_id = conn.last_insert_rowid();
+        let (mut copilot, session_id) =
+            caught_commitment_state(&format!("I'll write {}", "界".repeat(150)));
+        crate::storage::insert_copilot_session_on(&conn, &session_id, None, "local", "now")
+            .unwrap();
+        crate::storage::map_copilot_session_to_meeting_on(&conn, &session_id, meeting_id).unwrap();
+        let (result, _) =
+            approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, false).unwrap();
+        assert_eq!(result.task.source_meeting_id, Some(meeting_id));
+        assert_eq!(result.task.source_meeting_title, "Current meeting");
+        assert_eq!(result.task.title.chars().count(), 120);
+        assert!(result.task.title.ends_with('界'));
+    }
+
+    #[test]
+    fn commitment_approval_rolls_back_and_can_retry_after_storage_failure() {
+        let conn = crate::storage::in_memory_db();
+        let (mut copilot, session_id) = caught_commitment_state("I'll draft the brief");
+        conn.execute_batch("CREATE TRIGGER reject_staffing BEFORE INSERT ON workspace_task_staffing BEGIN SELECT RAISE(FAIL, 'test staffing failure'); END;").unwrap();
+        assert!(approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, false).is_err());
+        assert_eq!(
+            copilot.session.as_ref().unwrap().commitments[0].state,
+            "caught"
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_tasks", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspaces", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        conn.execute_batch("DROP TRIGGER reject_staffing").unwrap();
+        assert!(approve_commitment_on(&conn, &mut copilot, &session_id, 1, None, false).is_ok());
+    }
 
     #[test]
     fn prepared_jobs_and_retry_clones_freeze_folder_header_and_voice() {

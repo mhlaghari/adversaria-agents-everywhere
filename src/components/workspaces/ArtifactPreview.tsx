@@ -16,10 +16,31 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * The first standalone `<svg>` in an `.svg` or `.html` artifact, serialized
+ * with the SVG namespace so it renders as a data-URI image. Null when the
+ * text has no SVG or the parser rejected it.
+ */
+export function extractSvgMarkup(text: string, isHtml: boolean): string | null {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, isHtml ? "text/html" : "image/svg+xml");
+  if (doc.getElementsByTagName("parsererror").length > 0) return null;
+  const svg = doc.getElementsByTagName("svg")[0];
+  if (!svg) return null;
+  if (svg.namespaceURI !== SVG_NS) svg.setAttribute("xmlns", SVG_NS);
+  return new XMLSerializer().serializeToString(svg);
+}
+
 export function ArtifactPreview({ artifact }: ArtifactPreviewProps) {
   const lowerName = artifact.name.toLowerCase();
   const isDrawio = lowerName.endsWith(".drawio");
+  const isSvg = lowerName.endsWith(".svg");
+  const isHtml = lowerName.endsWith(".html") || lowerName.endsWith(".htm");
+  const path = artifact.path;
   const [loading, setLoading] = useState(true);
+  const [imageFailed, setImageFailed] = useState(false);
   const [text, setText] = useState("");
   const [readError, setReadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -31,13 +52,14 @@ export function ArtifactPreview({ artifact }: ArtifactPreviewProps) {
     setText("");
     setReadError(null);
     setActionError(null);
+    setImageFailed(false);
     if (isDrawio) {
       setLoading(false);
       return () => {
         cancelled = true;
       };
     }
-    void readWorkspaceArtifact(artifact.path)
+    void readWorkspaceArtifact(path)
       .then((content) => {
         if (!cancelled) setText(content);
       })
@@ -50,7 +72,9 @@ export function ArtifactPreview({ artifact }: ArtifactPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [artifact, isDrawio]);
+    // Keyed by id/path (not the artifact object) so a detail refresh that
+    // rebuilds the artifact list does not re-read and flash the preview.
+  }, [artifact.id, isDrawio, path]);
 
   const runAction = async (action: (path: string) => Promise<void>) => {
     if (actionPending) return;
@@ -71,6 +95,8 @@ export function ArtifactPreview({ artifact }: ArtifactPreviewProps) {
   const isPlainText = [".txt", ".json", ".csv", ".yaml", ".yml", ".log"].some(
     (extension) => lowerName.endsWith(extension),
   );
+  const svgMarkup =
+    (isSvg || isHtml) && !readError ? extractSvgMarkup(text, isHtml) : null;
 
   return (
     <>
@@ -85,6 +111,17 @@ export function ArtifactPreview({ artifact }: ArtifactPreviewProps) {
         />
       ) : isPlainText ? (
         <pre className="ws-artifact-preview ws-artifact-preview--plain">{text}</pre>
+      ) : isSvg || isHtml ? (
+        svgMarkup && !imageFailed ? (
+          <img
+            className="ws-diagram-preview"
+            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`}
+            alt={`${artifact.name}: solutions architecture diagram`}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <p className="ws-preview-status">Diagram preview unavailable</p>
+        )
       ) : (
         <p className="ws-preview-status">No in-app preview for this file type.</p>
       )}

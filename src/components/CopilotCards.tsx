@@ -12,6 +12,28 @@ export interface CopilotCardsProps {
   copilotMode?: CopilotMode;
   webEnabled?: boolean;
   copilotSessionId?: string | null;
+  /** Hide the manual-answer / mic / privacy header (the compact companion renders its own). */
+  showControls?: boolean;
+  /** Compact companion: fold Specifics and From your notes under a "More" disclosure. */
+  compact?: boolean;
+  /** Controlled mic flag: when `onMicQuestionsChange` is given the companion owns the checkbox and privacy line. */
+  micQuestions?: boolean;
+  onMicQuestionsChange?: (checked: boolean) => void;
+}
+
+export function readMicQuestionsFlag(): boolean {
+  try {
+    return localStorage.getItem("copilot.micQuestions") === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function persistMicQuestionsFlag(checked: boolean): void {
+  try {
+    localStorage.setItem("copilot.micQuestions", checked ? "1" : "0");
+  } catch {}
+  copilotSetMicQuestions(checked).catch(() => {});
 }
 
 function providerName(provider: string | undefined): string {
@@ -138,19 +160,15 @@ function splitContextTurn(turn: string): { speaker: string; text: string } {
   return match ? { speaker: match[1], text: match[2] } : { speaker: "Context", text: turn };
 }
 
-export function CopilotCards({ cards, onForceCard, onPin, onCancel, onRetry, copilotMode = "no_ai", webEnabled = false, copilotSessionId }: CopilotCardsProps): JSX.Element {
+export function CopilotCards({ cards, onForceCard, onPin, onCancel, onRetry, copilotMode = "no_ai", webEnabled = false, copilotSessionId, showControls = true, compact = false, micQuestions, onMicQuestionsChange }: CopilotCardsProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(cards.length);
   const [expandedPassages, setExpandedPassages] = useState<Set<string>>(() => new Set());
   const [expandedSources, setExpandedSources] = useState<Set<string>>(() => new Set());
   const [expandedContexts, setExpandedContexts] = useState<Set<string>>(() => new Set());
-  const [useMeFallback, setUseMeFallback] = useState(() => {
-    try {
-      return localStorage.getItem("copilot.micQuestions") === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [ownMicFlag, setOwnMicFlag] = useState(readMicQuestionsFlag);
+  const micControlled = onMicQuestionsChange !== undefined;
+  const useMeFallback = micControlled ? !!micQuestions : ownMicFlag;
   const [showNewPill, setShowNewPill] = useState(false);
 
   useLayoutEffect(() => {
@@ -216,7 +234,7 @@ export function CopilotCards({ cards, onForceCard, onPin, onCancel, onRetry, cop
 
   return (
     <div className="copilot-cards">
-      <div className="copilot-header">
+      {showControls && <div className="copilot-header">
         <button
           type="button"
           className="copilot-force-btn"
@@ -224,30 +242,27 @@ export function CopilotCards({ cards, onForceCard, onPin, onCancel, onRetry, cop
         >
           Answer current question
         </button>
-        <label className="copilot-me-toggle">
+        {!micControlled && <label className="copilot-me-toggle">
           <input
             type="checkbox"
             checked={useMeFallback}
             onChange={(event) => {
               const checked = event.target.checked;
-              setUseMeFallback(checked);
-              try {
-                localStorage.setItem("copilot.micQuestions", checked ? "1" : "0");
-              } catch {}
-              copilotSetMicQuestions(checked).catch(() => {});
+              setOwnMicFlag(checked);
+              persistMicQuestionsFlag(checked);
             }}
             aria-label="Questions can come from my mic"
           />
           Questions can come from my mic
-        </label>
-        {(copilotMode === "local" || copilotMode === "no_ai") && (
+        </label>}
+        {!micControlled && (copilotMode === "local" || copilotMode === "no_ai") && (
           <span className="copilot-privacy">
             {copilotMode === "local"
               ? "Current conversation stays on this Mac · 0 bytes sent"
               : "Your notes and conversation stay on this Mac"}
           </span>
         )}
-      </div>
+      </div>}
 
       {cards.length === 0 ? (
         <>
@@ -351,35 +366,50 @@ export function CopilotCards({ cards, onForceCard, onPin, onCancel, onRetry, cop
                               {(isStreaming || answer.status === "searching") && saySentences.length === 0 ? <span className="copilot-answer-cursor">▌</span> : null}
                               {isStreaming && saySentences.length > 0 ? <span className="copilot-answer-cursor">▌</span> : null}
                             </p>
-                            {specifics.length > 0 && (
-                              <ul className="copilot-specifics">
-                                {specifics.map((spec, sIdx) => (
-                                  <li key={sIdx} className="copilot-specific" dir="auto">{spec}</li>
-                                ))}
-                              </ul>
-                            )}
-                            {notes.length > 0 && (
-                              <div className="copilot-notes">
-                                <span className="copilot-notes-label">From your notes</span>
-                                {notes.map((note, nIdx) => {
-                                  const title = typeof note.passage_index === "number" ? (card.passages[note.passage_index]?.title ?? `P${(note.passage_index ?? 0) + 1}`) : "Notes";
-                                  const hasQuote = note.quote && note.quote.trim() !== "";
-                                  return (
-                                    <div key={nIdx} className="copilot-note">
-                                      <span className="copilot-chip chip--notes">{title}</span>
-                                      {hasQuote ? (
-                                        <>
-                                          <q dir="auto">{note.quote}</q>
-                                          <span className="copilot-note-clause">{note.clause}</span>
-                                        </>
-                                      ) : (
-                                        <span className="copilot-note-raw" dir="auto">{note.text}</span>
-                                      )}
+                            {(() => {
+                              const detail = (
+                                <>
+                                  {specifics.length > 0 && (
+                                    <ul className="copilot-specifics">
+                                      {specifics.map((spec, sIdx) => (
+                                        <li key={sIdx} className="copilot-specific" dir="auto">{spec}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  {notes.length > 0 && (
+                                    <div className="copilot-notes">
+                                      <span className="copilot-notes-label">From your notes</span>
+                                      {notes.map((note, nIdx) => {
+                                        const title = typeof note.passage_index === "number" ? (card.passages[note.passage_index]?.title ?? `P${(note.passage_index ?? 0) + 1}`) : "Notes";
+                                        const hasQuote = note.quote && note.quote.trim() !== "";
+                                        return (
+                                          <div key={nIdx} className="copilot-note">
+                                            <span className="copilot-chip chip--notes">{title}</span>
+                                            {hasQuote ? (
+                                              <>
+                                                <q dir="auto">{note.quote}</q>
+                                                <span className="copilot-note-clause">{note.clause}</span>
+                                              </>
+                                            ) : (
+                                              <span className="copilot-note-raw" dir="auto">{note.text}</span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            )}
+                                  )}
+                                </>
+                              );
+                              if (compact && (specifics.length > 0 || notes.length > 0)) {
+                                return (
+                                  <details className="copilot-more">
+                                    <summary>More</summary>
+                                    {detail}
+                                  </details>
+                                );
+                              }
+                              return detail;
+                            })()}
                             {nextVal && nextVal.trim() !== "" && (
                               <details className="copilot-next">
                                 <summary>Possible follow-up</summary>

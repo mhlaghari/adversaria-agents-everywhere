@@ -437,6 +437,65 @@ describe("WorkspaceDetailView two-pane project screen", () => {
     ).toBeTruthy();
   });
 
+  it("shows the diagram under an awaiting-review visualize row without expanding", async () => {
+    const detail: WorkspaceDetail = {
+      ...workspaceDetail("local"),
+      tasks: [
+        workspaceTask({
+          title: "Draw the solutions architecture",
+          capability: "visualize",
+          status: "awaiting_review",
+        }),
+      ],
+      artifacts: [
+        {
+          id: 72,
+          workspace_id: 4,
+          run_id: 51,
+          name: "draft.md",
+          path: "/tmp/draft.md",
+          created_at: "2026-08-25T10:01:00Z",
+        },
+        {
+          id: 73,
+          workspace_id: 4,
+          run_id: 51,
+          name: "solutions-architecture.html",
+          path: "/tmp/solutions-architecture.html",
+          created_at: "2026-08-25T10:01:00Z",
+        },
+      ],
+    };
+    mockWorkspaceSetup((command, payload) => {
+      if (command === "get_latest_workspace_run") return workspaceRun("Diagram ready.");
+      if (command === "read_workspace_artifact") {
+        const { path } = payload as { path: string };
+        return path.endsWith(".html")
+          ? '<html><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360"><rect width="4" height="4"/></svg></body></html>'
+          : "# Draft";
+      }
+      return null;
+    });
+
+    renderDetail(detail);
+
+    const image = await screen.findByRole("img", {
+      name: "solutions-architecture.html: solutions architecture diagram",
+    });
+    expect(image).toHaveClass("ws-diagram-preview");
+    const taskRow = screen.getByRole("button", {
+      name: "Draw the solutions architecture details",
+    });
+    expect(taskRow).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Diagram ready.")).not.toBeInTheDocument();
+
+    await userEvent.click(taskRow);
+
+    await screen.findByText("Diagram ready.");
+    expect(screen.getByText("draft.md")).toBeInTheDocument();
+    expect(screen.queryByText("solutions-architecture.html")).not.toBeInTheDocument();
+  });
+
   it("rejects with feedback and immediately reruns the task", async () => {
     const commands: string[] = [];
     let rejectPayload: unknown;

@@ -8049,3 +8049,336 @@ button.ws-engine-chip {
 .folder-copilot-btn { height: 28px; font-size: 11px; padding: 0 10px; }
 .folder-copilot-btn--sm { height: 24px; font-size: 11px; padding: 0 8px; }
 .copilot-folder-line { font-size: 11px; color: var(--text-muted); margin: 0 0 4px; }
+.commitment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--overlay-5);
+}
+.commitment-text {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.commitment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.commitment-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.commitment-approved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.commitment-error {
+  margin: 0;
+  color: var(--status-error-color);
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* A commitment still waiting on a tap should not read as another answer card. */
+.commitment-card[data-stage="caught"] {
+  border-color: var(--accent-amber);
+  box-shadow: inset 2px 0 0 var(--accent-amber);
+}
+.commitment-card.approved {
+  background: transparent;
+}
+.commitment-card.approved .commitment-text {
+  color: var(--text-secondary);
+}
+.commitment-actions-spacer {
+  flex: 1 1 auto;
+}
+.commitment-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.commitment-type-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.commitment-type-select {
+  height: 26px;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--overlay-5);
+  color: var(--text-primary);
+}
+.commitment-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.commitment-stage::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.commitment-stage--running { color: var(--accent-blue); }
+.commitment-stage--ready { color: var(--tag-green-text); }
+.commitment-stage--failed { color: var(--status-error-color); }
+.commitment-stage--paused { color: var(--accent-amber); }
+.companion-section-label--caught {
+  color: var(--accent-amber);
+}
+.ws-live-chip {
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--tag-green-text);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---- Companion: wide corrections (Astra layouts, 2026-09-12) ---- */
+.companion-recbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.companion-status { display: none; }
+@media (min-width: 900px) and (max-width: 1199px) {
+  .companion-body.balanced-wide .companion-transcript { flex-basis: 320px; }
+}
+.companion-tabs { padding: 0 10px; }
+.companion-tab { height: 36px; padding: 0 10px; }
+/* CAUGHT sits outside the scrolling tab panel so it stays visible on Notes. */
+.companion-caught {
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+.companion-caught[hidden] { display: none; }
+.companion-caught-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
+}
+.companion-caught .companion-section-label { padding-left: 0; padding-right: 0; }
+/* The answer panel is a bounded column; the list owns the scrolling. */
+.companion-panel--copilot {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.companion-panel--copilot .companion-panel-inner--wide {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.companion-panel--copilot .copilot-cards { flex: 1; min-height: 0; }
+.copilot-list { min-height: 0; overflow-y: auto; }
+/* Amber marks required action only: thicker inset on untapped cards, muted Say eyebrow. */
+.commitment-card[data-stage="caught"] { box-shadow: inset 3px 0 0 var(--accent-amber); }
+.copilot-say-eyebrow { color: var(--text-muted); }
+.copilot-more { font-size: 12px; color: var(--text-muted); }
+.copilot-more > summary { cursor: pointer; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+.copilot-more > .copilot-specifics, .copilot-more > .copilot-notes { margin-top: 4px; }
+
+/* Readiness + consent access share one 32px row; the details live in its disclosure. */
+.copilot-consent-row { margin: 0 0 6px; }
+.copilot-consent-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  cursor: pointer;
+  list-style: none;
+}
+.copilot-consent-row-summary::-webkit-details-marker { display: none; }
+.copilot-consent-row-summary .copilot-folder-line {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.copilot-consent-row-mode { flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.copilot-consent-row[open] .copilot-consent-row-mode { color: var(--accent-blue); }
+.copilot-consent-row-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 8px; }
+.copilot-consent-row-body .copilot-privacy { justify-self: start; text-align: left; }
+
+/* ---- Companion: compact layout below 900px ---- */
+@media (width < 900px) {
+  .companion-layout[data-layout="compact"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 44px 28px minmax(0, 1fr) 44px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .companion-layout[data-layout="compact"]:has(
+    .companion-notefoot-input:focus
+  ) {
+    grid-template-rows: 44px 28px minmax(0, 1fr) 88px;
+  }
+
+  .companion-chrome, .companion-waveform,
+  .companion-status-label, .companion-tabs,
+  .companion-divider { display: none; }
+
+  .companion-recbar {
+    box-sizing: border-box;
+    height: 44px;
+    padding: 4px 10px;
+    gap: 8px;
+  }
+  .companion-recbar button { min-height: 36px; }
+  .companion-status {
+    display: block;
+    min-width: 0;
+    padding: 0 10px;
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .companion-status:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+
+  .companion-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 176px minmax(0, 1fr);
+    grid-template-areas: "caught" "transcript" "answers";
+    min-height: 0;
+    overflow: hidden;
+  }
+  .companion-right { display: contents; }
+  .companion-caught {
+    grid-area: caught;
+    max-height: 184px;
+    overflow: hidden;
+    padding: 0 10px;
+  }
+  .companion-caught[hidden] { display: none; }
+  .companion-caught-list {
+    max-height: 160px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .companion-caught .companion-section-label {
+    box-sizing: border-box;
+    height: 24px;
+    padding: 4px 0;
+    margin: 0;
+    color: var(--accent-amber);
+  }
+  .companion-caught .commitment-card {
+    padding: 8px;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .companion-caught .commitment-text {
+    font-size: 14px;
+    line-height: 20px;
+    max-height: 60px;
+    overflow-y: auto;
+  }
+  .commitment-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 80px 68px;
+    gap: 6px;
+  }
+  .commitment-actions-spacer, .commitment-type-label { display: none; }
+  .commitment-type { min-width: 0; }
+  .commitment-type-select { width: 100%; min-width: 0; }
+  .commitment-actions button, .commitment-type-select { height: 36px; }
+
+  .companion-layout[data-layout="compact"] .companion-transcript {
+    grid-area: transcript;
+    min-height: 0;
+    max-height: none;
+    border-block: 1px solid var(--border-color);
+  }
+  .companion-feed { min-height: 0; overflow-y: auto; }
+  .companion-feed-line {
+    max-width: none;
+    margin: 0;
+    font-size: 14px;
+    line-height: 21px;
+    color: var(--text-secondary);
+  }
+
+  .companion-answers {
+    grid-area: answers;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .companion-answers-heading {
+    justify-content: space-between;
+    max-width: none;
+    margin: 0;
+  }
+  .companion-answers .copilot-cards,
+  .companion-answers .copilot-list {
+    flex: 1;
+    min-height: 0;
+  }
+  .companion-answers .copilot-cards { padding: 0 10px; }
+  .companion-answers .copilot-list {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .copilot-card { flex-shrink: 0; }
+  .companion-tools-sheet {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    padding: 10px;
+    background: var(--bg-primary);
+  }
+  .companion-tools-sheet .companion-sheet-header { padding: 0 0 6px; }
+  .companion-tools-sheet .companion-section-label { padding-left: 0; padding-right: 0; max-width: none; margin: 0; }
+  .companion-tools-sheet .companion-context { display: block; }
+  .companion-notefoot { padding: 6px 10px; }
+  .companion-notefoot-input,
+  .companion-notefoot-input.expanded {
+    box-sizing: border-box;
+    height: 32px;
+    font-size: 14px;
+  }
+  .companion-notefoot-input:focus { height: 76px; }
+}

@@ -13,11 +13,12 @@ import {
   setFolderCopilotMode,
   setFolderCopilotWeb,
 } from "../lib/tauri";
-import type { AttachmentDraft, CopilotCard, CopilotFolderReadiness, CopilotMode, FolderSummary } from "../types";
+import type { AttachmentDraft, Commitment, CopilotCard, CopilotFolderReadiness, CopilotMode, FolderSummary } from "../types";
 import { LastTimeBrief } from "./LastTimeBrief";
-import { CopilotCards } from "./CopilotCards";
+import { CopilotCards, persistMicQuestionsFlag, readMicQuestionsFlag } from "./CopilotCards";
 import { CopilotConsentBar } from "./CopilotConsentBar";
 import { CopilotAnswerStrip } from "./CopilotAnswerStrip";
+import { CommitmentCard } from "./CommitmentCard";
 
 interface RecordingCompanionProps {
   variant: string;
@@ -78,7 +79,19 @@ export function RecordingCompanion({
 }: RecordingCompanionProps) {
   const processing = status === "stopping";
   const recording = status === "recording";
-  const layout = variant === "transcript" ? "transcript" : "balanced";
+  // Compact below 900px regardless of the configured recording_view; honor the variant above it.
+  const wideQuery = "(min-width: 900px)";
+  const [wide, setWide] = useState(() => window.matchMedia(wideQuery).matches);
+  useEffect(() => {
+    const media = window.matchMedia(wideQuery);
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const layout: "compact" | "transcript" | "balanced" = !wide
+    ? "compact"
+    : variant === "transcript" ? "transcript" : "balanced";
 
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -128,6 +141,68 @@ export function RecordingCompanion({
   const [folderWebEnabled, setFolderWebEnabled] = useState(false);
   const [briefFolderName, setBriefFolderName] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<CopilotFolderReadiness | null>(null);
+  const [commitments, setCommitments] = useState<Commitment[]>([]);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsBtnRef = useRef<HTMLButtonElement>(null);
+  const [micQuestions, setMicQuestions] = useState(readMicQuestionsFlag);
+  const caughtListRef = useRef<HTMLDivElement>(null);
+  const seenCaughtIdRef = useRef(0);
+  const [caughtAnnouncement, setCaughtAnnouncement] = useState("");
+
+  // Escape closes the Tools sheet; focus goes back to the Tools button either way.
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeTools();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolsOpen]);
+  function closeTools(): void {
+    setToolsOpen(false);
+    setTimeout(() => toolsBtnRef.current?.focus(), 0);
+  }
+
+  // Commitments per session: listen to copilot-commitment, keyed by id, ignore other session
+  useEffect(() => {
+    const sid = copilotSessionId?.trim();
+    if (!sid) {
+      setCommitments([]);
+      return;
+    }
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    try {
+      const maybe = listen<Commitment>("copilot-commitment", (event) => {
+        const payload = event.payload;
+        if (!payload || payload.session_id !== sid) return;
+        if (cancelled) return;
+        setCommitments((prev) => {
+          const idx = prev.findIndex((c) => c.id === payload.id);
+          if (idx === -1) return [...prev, payload];
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...payload };
+          return next;
+        });
+      });
+      (maybe as Promise<() => void>).then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      }).catch(() => {});
+    } catch {
+      // vitest without tauri runtime
+    }
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [copilotSessionId]);
+
+  // Clear commitments when session changes to avoid stale cards persisting
+  useEffect(() => {
+    if (!copilotSessionId?.trim()) setCommitments([]);
+  }, [copilotSessionId]);
 
   // Session-scoped folder readiness: subscribe to copilot-folder-ready for current session
   useEffect(() => {
@@ -364,6 +439,19 @@ export function RecordingCompanion({
     .filter((s) => livePartials[s].trim() !== "")
     .map((s) => ({ source: s, text: livePartials[s] }));
 
+  const liveCommitments = commitments
+    .filter((c) => c.state !== "dismissed")
+    .sort((a, b) => b.at_ms - a.at_ms);
+  const untappedCommitmentCount = liveCommitments.filter((c) => c.state === "caught").length;
+  const newestCaughtId = liveCommitments.reduce((max, c) => (c.state === "caught" && c.id > max ? c.id : max), 0);
+  // A new caught ID scrolls only the CAUGHT list to the top and announces; focus stays put.
+  useEffect(() => {
+    if (newestCaughtId === 0 || newestCaughtId <= seenCaughtIdRef.current) return;
+    seenCaughtIdRef.current = newestCaughtId;
+    if (caughtListRef.current) caughtListRef.current.scrollTop = 0;
+    setCaughtAnnouncement("Commitment needs your approval");
+  }, [newestCaughtId]);
+
   const filingName = folders.find((f) => f.folder.id === recordingFolderId)?.folder.name ?? null;
   function folderReadinessLine(): string {
     if (recordingFolderId == null) return "Folder: none";
@@ -375,12 +463,12 @@ export function RecordingCompanion({
         ? folders.find((f) => f.folder.id === readiness.folder_id)?.folder.name
         : null) ?? briefFolderName ?? filingName ?? String(recordingFolderId);
     if (!readiness || readiness.status === "indexing") {
-      return `Folder: ${folderName} \u00b7 indexing\u2026`;
+      return `${folderName} \u00b7 reading your files\u2026`;
     }
     if (readiness.status === "error") {
-      return `Folder: ${folderName} \u00b7 indexing failed: ${readiness.error ?? "unknown"}`;
+      return `${folderName} \u00b7 could not read your files: ${readiness.error ?? "unknown"}`;
     }
-    return `Folder: ${folderName} \u00b7 ${readiness.count} sources indexed \u00b7 pack ${readiness.pack_projects} projects`;
+    return `${folderName} \u00b7 ready \u00b7 ${readiness.count} sources`;
   }
   const copilotFolderLabel = folderReadinessLine();
 
@@ -419,9 +507,214 @@ export function RecordingCompanion({
     }
   }, [sheetOpen, sheetFocusId]);
 
-  const isCopilotFocus = layout !== "balanced" && (activeTab === "copilot" || sheetOpen);
+  const isCopilotFocus = layout === "transcript" && (activeTab === "copilot" || sheetOpen);
+  const providerLabel =
+    copilotMode === "no_ai" ? "No AI" : copilotMode === "local" ? "Local" : copilotMode === "deepseek" ? "DeepSeek" : "Claude";
+  const statusLabel = `${providerLabel} \u00b7 ${copilotFolderLabel}`;
+
+  const consentBar = (
+    <CopilotConsentBar mode={copilotMode} hasClaudeKey={hasClaudeKey} hasDeepSeekKey={hasDeepSeekKey} hasFolder={recordingFolderId != null} onChange={handleCopilotModeChange} />
+  );
+  const handleMicQuestionsChange = (checked: boolean) => {
+    setMicQuestions(checked);
+    persistMicQuestionsFlag(checked);
+  };
+  const micToggle = (
+    <label className="copilot-me-toggle">
+      <input
+        type="checkbox"
+        checked={micQuestions}
+        onChange={(event) => handleMicQuestionsChange(event.target.checked)}
+        aria-label="Questions can come from my mic"
+      />
+      Questions can come from my mic
+    </label>
+  );
+  const privacyLine = (copilotMode === "local" || copilotMode === "no_ai") && (
+    <span className="copilot-privacy">
+      {copilotMode === "local"
+        ? "Current conversation stays on this Mac · 0 bytes sent"
+        : "Your notes and conversation stay on this Mac"}
+    </span>
+  );
+
+  const contextAside = (
+    <aside className="companion-context" aria-label="Meeting context">
+      <div className="companion-section-label">THIS MEETING KNOWS</div>
+      <div className="companion-context-scroll">
+        {attachments.length > 0 ? (
+          <ul className="companion-context-attachments" aria-live="polite">
+            {attachments.map((attachment, index) => (
+              <li
+                className="companion-context-attachment"
+                key={`${attachment.kind}-${attachment.value}-${index}`}
+              >
+                <span
+                  className="companion-context-attachment-label"
+                  dir="auto"
+                  title={attachment.label}
+                >
+                  {attachment.label}
+                </span>
+                <button
+                  type="button"
+                  className="companion-context-remove"
+                  aria-label={`Remove ${attachment.label}`}
+                  onClick={() => onRemoveAttachment(index)}
+                  disabled={processing}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="companion-context-empty">
+            Attach a previous meeting and your notes will include a follow-up check on its open action items. Attached
+            files are used as background.
+          </p>
+        )}
+
+        <div className="companion-context-actions">
+          <button
+            type="button"
+            className="companion-context-action"
+            onClick={() => void handlePickFile()}
+            disabled={processing || pickingFile}
+          >
+            {pickingFile ? "Choosing…" : "+ Add file"}
+          </button>
+          <button
+            type="button"
+            className="companion-context-action"
+            aria-expanded={meetingListOpen}
+            aria-controls="companion-recent-meetings"
+            onClick={() => setMeetingListOpen((open) => !open)}
+            disabled={processing}
+          >
+            + Add meeting
+          </button>
+        </div>
+
+        {meetingListOpen && (
+          <div className="companion-context-meetings" id="companion-recent-meetings">
+            {recentMeetings.length > 0 ? (
+              recentMeetings.slice(0, 10).map((meeting) => (
+                <button
+                  type="button"
+                  className="companion-context-meeting"
+                  key={meeting.id}
+                  title={meeting.title}
+                  onClick={() => {
+                    onAddAttachment({
+                      kind: "meeting",
+                      value: String(meeting.id),
+                      label: meeting.title,
+                    });
+                    setMeetingListOpen(false);
+                  }}
+                >
+                  <span dir="auto">{meeting.title}</span>
+                </button>
+              ))
+            ) : (
+              <p className="companion-context-empty">No previous meetings yet.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+
+  const lastTimeControls = (
+    <>
+      <select
+        aria-label="Folder for this meeting"
+        value={recordingFolderId ?? ""}
+        disabled={!!copilotSessionId?.trim()}
+        title={copilotSessionId?.trim() ? "Folder is locked for this meeting — it uses the folder chosen when recording started." : undefined}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChangeRecordingFolder(v === "" ? null : Number(v));
+        }}
+      >
+        <option value="">(no folder)</option>
+        {folders.map((f) => (
+          <option key={f.folder.id} value={f.folder.id}>
+            {f.folder.name}
+          </option>
+        ))}
+      </select>
+      <label className="folder-web-toggle">
+        <input
+          type="checkbox"
+          checked={folderWebEnabled}
+          disabled={recordingFolderId == null || !copilotSessionId?.trim()}
+          onChange={(e) => void handleWebToggle(e.target.checked)}
+          aria-label="Allow web search (Claude only)"
+        />
+        Allow web search (Claude only)
+      </label>
+      <LastTimeBrief folderId={recordingFolderId} />
+    </>
+  );
+
+  // One mounted CommitmentCard list, placed by CSS in both the balanced and compact layouts.
+  const caughtSection = (
+    <section className="companion-caught" hidden={liveCommitments.length === 0} aria-label="Caught commitments">
+      <div className="companion-section-label companion-section-label--caught">
+        CAUGHT {untappedCommitmentCount > 0 ? `\u00b7 ${untappedCommitmentCount} NEEDS YOUR TAP` : ""}
+      </div>
+      <div className="companion-caught-list" ref={caughtListRef}>
+        {liveCommitments.map((c) => (
+          <CommitmentCard key={c.session_id + "-" + c.id} commitment={c} />
+        ))}
+      </div>
+    </section>
+  );
+
+  const notesFooter = (
+    <div className="companion-notefoot">
+      <textarea
+        className={`companion-notefoot-input${footerExpanded ? " expanded" : ""}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="+ Jot a note — folds into the summary…"
+        dir="auto"
+        disabled={processing}
+        onFocus={() => setFooterFocused(true)}
+        onBlur={(e) => {
+          if (e.target.value.trim() === "") setFooterFocused(false);
+        }}
+      />
+    </div>
+  );
+
+  const toolsSheet = (
+    <div className="companion-tools-sheet" id="companion-tools-sheet" role="region" aria-label="Meeting tools">
+      <div className="companion-sheet-header">
+        <span className="companion-sheet-title">Tools</span>
+        <button type="button" className="companion-sheet-close" onClick={closeTools} aria-label="Close tools">Close</button>
+      </div>
+      <p className="copilot-folder-line">{copilotFolderLabel}</p>
+      {consentBar}
+      {micToggle}
+      <div className="companion-section-label">LAST TIME</div>
+      {lastTimeControls}
+      {contextAside}
+    </div>
+  );
+
+  const bodyClass =
+    layout === "balanced"
+      ? "companion-body balanced-wide"
+      : isCopilotFocus
+        ? "companion-body companion-body--copilot-focus"
+        : "companion-body";
+
   return (
-    <div className="companion-layout">
+    <div className="companion-layout" data-layout={layout}>
+      <span className="sr-only" role="status" aria-live="polite">{caughtAnnouncement}</span>
       <div className="companion-chrome">
         <span className="companion-wordmark">Adversaria</span>
         <button
@@ -454,24 +747,41 @@ export function RecordingCompanion({
             ))}
           </span>
         </div>
-        <button
-          className="companion-stop-btn"
-          disabled={processing}
-          onClick={onStop}
-        >
-          Stop &amp; summarize
-        </button>
+        <div className="companion-recbar-right">
+          {layout === "compact" && (
+            <button
+              className="companion-browse-btn"
+              onClick={onBrowse}
+              title="Browse meetings — the recording keeps running"
+            >
+              Browse ⌄
+            </button>
+          )}
+          <button
+            className="companion-stop-btn"
+            disabled={processing}
+            onClick={onStop}
+          >
+            Stop &amp; summarize
+          </button>
+        </div>
       </div>
 
-      <div
-        className={
-          layout === "balanced"
-            ? "companion-body balanced-wide"
-            : isCopilotFocus
-              ? "companion-body companion-body--copilot-focus"
-              : "companion-body"
-        }
-      >
+      {layout === "compact" && (
+        <button
+          ref={toolsBtnRef}
+          type="button"
+          className="companion-status"
+          aria-expanded={toolsOpen}
+          aria-controls="companion-tools-sheet"
+          title={statusLabel}
+          onClick={() => (toolsOpen ? closeTools() : setToolsOpen(true))}
+        >
+          {statusLabel} · Tools
+        </button>
+      )}
+
+      <div className={bodyClass}>
         <div className="companion-transcript">
           <div className="companion-section-label">
             LIVE TRANSCRIPT
@@ -529,49 +839,93 @@ export function RecordingCompanion({
               </div>
               <div className="companion-sheet-body">
                 <p className="copilot-folder-line">{copilotFolderLabel}</p>
-                <CopilotConsentBar mode={copilotMode} hasClaudeKey={hasClaudeKey} hasDeepSeekKey={hasDeepSeekKey} hasFolder={recordingFolderId != null} onChange={handleCopilotModeChange} />
+                {consentBar}
+                {liveCommitments.length > 0 && (
+                  <>
+                    <div className="companion-section-label companion-section-label--caught">
+                      CAUGHT {untappedCommitmentCount > 0 ? `\u00b7 ${untappedCommitmentCount} NEEDS YOUR TAP` : ""}
+                    </div>
+                    {liveCommitments.map((c) => (
+                      <CommitmentCard key={`sheet-${c.session_id}-${c.id}`} commitment={c} />
+                    ))}
+                  </>
+                )}
                 <CopilotCards cards={copilotCards} onForceCard={onForceCard} onPin={handlePin} onCancel={onCancel} onRetry={onRetry} copilotMode={copilotMode} webEnabled={folderWebEnabled} copilotSessionId={copilotSessionId ?? null} />
               </div>
             </div>
           )}
         </div>
 
-        {layout === "balanced" ? (
+        {layout === "transcript" ? (
+          notesFooter
+        ) : (
           <>
             <div className="companion-divider" />
             <div className="companion-right">
-              <CopilotAnswerStrip cards={copilotCards} activeTab={activeTab} onOpen={(id) => openCopilot(id)} />
-              <div role="tablist" className="companion-tabs">
-                <button
-                  role="tab"
-                  aria-selected={activeTab === "notes"}
-                  className={`companion-tab${activeTab === "notes" ? " active" : ""}`}
-                  onClick={() => setActiveTab("notes")}
-                >
-                  Notes
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={activeTab === "lasttime"}
-                  className={`companion-tab${activeTab === "lasttime" ? " active" : ""}`}
-                  onClick={() => setActiveTab("lasttime")}
-                >
-                  Last time
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={activeTab === "copilot"}
-                  className={`companion-tab${activeTab === "copilot" ? " active" : ""}`}
-                  onClick={() => setActiveTab("copilot")}
-                >
-                  Copilot
-                  {pendingCopilotCount > 0 && activeTab !== "copilot" && (
-                    <span className="copilot-badge">{pendingCopilotCount}</span>
-                  )}
-                </button>
-              </div>
+              {layout === "balanced" && (
+                <CopilotAnswerStrip cards={copilotCards} activeTab={activeTab} onOpen={(id) => openCopilot(id)} />
+              )}
+              {layout === "balanced" && (
+                <div role="tablist" className="companion-tabs">
+                  <button
+                    role="tab"
+                    aria-selected={activeTab === "notes"}
+                    className={`companion-tab${activeTab === "notes" ? " active" : ""}`}
+                    onClick={() => setActiveTab("notes")}
+                  >
+                    Notes
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={activeTab === "lasttime"}
+                    className={`companion-tab${activeTab === "lasttime" ? " active" : ""}`}
+                    onClick={() => setActiveTab("lasttime")}
+                  >
+                    Last time
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={activeTab === "copilot"}
+                    className={`companion-tab${activeTab === "copilot" ? " active" : ""}`}
+                    onClick={() => setActiveTab("copilot")}
+                  >
+                    Copilot
+                    {pendingCopilotCount + untappedCommitmentCount > 0 && activeTab !== "copilot" && (
+                      <span className="copilot-badge">{pendingCopilotCount + untappedCommitmentCount}</span>
+                    )}
+                  </button>
+                </div>
+              )}
 
-              {activeTab === "notes" ? (
+              {caughtSection}
+
+              {layout === "compact" ? (
+                <section className="companion-answers" aria-label="Copilot answers">
+                  <div className="companion-section-label companion-answers-heading">
+                    <span>ANSWERS</span>
+                    <button
+                      type="button"
+                      className="copilot-force-btn"
+                      onClick={() => onForceCard(micQuestions)}
+                    >
+                      Answer current question
+                    </button>
+                  </div>
+                  <CopilotCards
+                    cards={copilotCards}
+                    onForceCard={onForceCard}
+                    onPin={handlePin}
+                    onCancel={onCancel}
+                    onRetry={onRetry}
+                    copilotMode={copilotMode}
+                    webEnabled={folderWebEnabled}
+                    copilotSessionId={copilotSessionId ?? null}
+                    showControls={false}
+                    compact
+                  />
+                  {toolsOpen && toolsSheet}
+                </section>
+              ) : activeTab === "notes" ? (
                 <div className="companion-right-row">
                   <div className="companion-notes">
                     {filingName ? <div className="lasttime-filing">Filing into: {filingName}</div> : null}
@@ -585,153 +939,52 @@ export function RecordingCompanion({
                       disabled={processing}
                     />
                   </div>
-                  <aside className="companion-context" aria-label="Meeting context">
-                    <div className="companion-section-label">THIS MEETING KNOWS</div>
-                    <div className="companion-context-scroll">
-                      {attachments.length > 0 ? (
-                        <ul className="companion-context-attachments" aria-live="polite">
-                          {attachments.map((attachment, index) => (
-                            <li
-                              className="companion-context-attachment"
-                              key={`${attachment.kind}-${attachment.value}-${index}`}
-                            >
-                              <span
-                                className="companion-context-attachment-label"
-                                dir="auto"
-                                title={attachment.label}
-                              >
-                                {attachment.label}
-                              </span>
-                              <button
-                                type="button"
-                                className="companion-context-remove"
-                                aria-label={`Remove ${attachment.label}`}
-                                onClick={() => onRemoveAttachment(index)}
-                                disabled={processing}
-                              >
-                                ×
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="companion-context-empty">
-                          Attach a previous meeting and your notes will include a follow-up check on its open action items. Attached
-                          files are used as background.
-                        </p>
-                      )}
-
-                      <div className="companion-context-actions">
-                        <button
-                          type="button"
-                          className="companion-context-action"
-                          onClick={() => void handlePickFile()}
-                          disabled={processing || pickingFile}
-                        >
-                          {pickingFile ? "Choosing…" : "+ Add file"}
-                        </button>
-                        <button
-                          type="button"
-                          className="companion-context-action"
-                          aria-expanded={meetingListOpen}
-                          aria-controls="companion-recent-meetings"
-                          onClick={() => setMeetingListOpen((open) => !open)}
-                          disabled={processing}
-                        >
-                          + Add meeting
-                        </button>
-                      </div>
-
-                      {meetingListOpen && (
-                        <div className="companion-context-meetings" id="companion-recent-meetings">
-                          {recentMeetings.length > 0 ? (
-                            recentMeetings.slice(0, 10).map((meeting) => (
-                              <button
-                                type="button"
-                                className="companion-context-meeting"
-                                key={meeting.id}
-                                title={meeting.title}
-                                onClick={() => {
-                                  onAddAttachment({
-                                    kind: "meeting",
-                                    value: String(meeting.id),
-                                    label: meeting.title,
-                                  });
-                                  setMeetingListOpen(false);
-                                }}
-                              >
-                                <span dir="auto">{meeting.title}</span>
-                              </button>
-                            ))
-                          ) : (
-                            <p className="companion-context-empty">No previous meetings yet.</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </aside>
+                  {contextAside}
                 </div>
               ) : activeTab === "lasttime" ? (
                 <div className="companion-panel">
                   <div className="companion-panel-inner">
-                    <select
-                      aria-label="Folder for this meeting"
-                      value={recordingFolderId ?? ""}
-                      disabled={!!copilotSessionId?.trim()}
-                      title={copilotSessionId?.trim() ? "Folder is locked for this meeting — it uses the folder chosen when recording started." : undefined}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        onChangeRecordingFolder(v === "" ? null : Number(v));
-                      }}
-                    >
-                      <option value="">(no folder)</option>
-                      {folders.map((f) => (
-                        <option key={f.folder.id} value={f.folder.id}>
-                          {f.folder.name}
-                        </option>
-                      ))}
-                    </select>
-                    <label className="folder-web-toggle">
-                      <input
-                        type="checkbox"
-                        checked={folderWebEnabled}
-                        disabled={recordingFolderId == null || !copilotSessionId?.trim()}
-                        onChange={(e) => void handleWebToggle(e.target.checked)}
-                        aria-label="Allow web search (Claude only)"
-                      />
-                      Allow web search (Claude only)
-                    </label>
-                    <LastTimeBrief folderId={recordingFolderId} />
+                    {lastTimeControls}
                   </div>
                 </div>
               ) : (
-                <div className="companion-panel">
+                <div className="companion-panel companion-panel--copilot">
                   <div className="companion-panel-inner companion-panel-inner--wide">
-                    <p className="copilot-folder-line">{copilotFolderLabel}</p>
-                    <CopilotConsentBar mode={copilotMode} hasClaudeKey={hasClaudeKey} hasDeepSeekKey={hasDeepSeekKey} hasFolder={recordingFolderId != null} onChange={handleCopilotModeChange} />
-                    <CopilotCards cards={copilotCards} onForceCard={onForceCard} onPin={handlePin} onCancel={onCancel} onRetry={onRetry} copilotMode={copilotMode} webEnabled={folderWebEnabled} copilotSessionId={copilotSessionId ?? null} />
+                    <details className="copilot-consent-row">
+                      <summary className="copilot-consent-row-summary">
+                        <span className="copilot-folder-line">{copilotFolderLabel}</span>
+                        <span className="copilot-consent-row-mode">{providerLabel} · consent ›</span>
+                      </summary>
+                      <div className="copilot-consent-row-body">
+                        {consentBar}
+                        {micToggle}
+                        {privacyLine}
+                      </div>
+                    </details>
+                    {copilotCards.length > 0 && (
+                      <div className="companion-section-label">ANSWERS</div>
+                    )}
+                    <CopilotCards
+                      cards={copilotCards}
+                      onForceCard={onForceCard}
+                      onPin={handlePin}
+                      onCancel={onCancel}
+                      onRetry={onRetry}
+                      copilotMode={copilotMode}
+                      webEnabled={folderWebEnabled}
+                      copilotSessionId={copilotSessionId ?? null}
+                      micQuestions={micQuestions}
+                      onMicQuestionsChange={handleMicQuestionsChange}
+                    />
                   </div>
                 </div>
               )}
             </div>
           </>
-        ) : (
-          <div className="companion-notefoot">
-            <textarea
-              className={`companion-notefoot-input${footerExpanded ? " expanded" : ""}`}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder="+ Jot a note — folds into the summary…"
-              dir="auto"
-              disabled={processing}
-              onFocus={() => setFooterFocused(true)}
-              onBlur={(e) => {
-                if (e.target.value.trim() === "") setFooterFocused(false);
-              }}
-            />
-          </div>
         )}
       </div>
+
+      {layout === "compact" && notesFooter}
     </div>
   );
 }

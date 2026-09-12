@@ -507,6 +507,8 @@ pub fn run() {
             commands::get_project_overview,
             commands::related_meetings,
             commands::copilot_set_live_context,
+            commands::commitment_approve,
+            commands::commitment_dismiss,
             commands::copilot_ask_last,
             commands::copilot_force_card,
             commands::copilot_cancel,

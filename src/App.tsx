@@ -506,6 +506,16 @@ function App() {
     setSelectedFolderId,
   });
 
+  // CommitmentCard requests to open Workspaces (via DOM event fallback when setView not reachable)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ view: string }>).detail;
+      if (detail?.view === "workspaces") setView("workspaces");
+    };
+    window.addEventListener("adversaria:open-view", handler as EventListener);
+    return () => window.removeEventListener("adversaria:open-view", handler as EventListener);
+  }, []);
+
   // Listen for tray and hotkey events from Rust backend
   useEffect(() => {
     const handleToggle = () => {

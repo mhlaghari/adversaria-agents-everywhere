@@ -52,27 +52,57 @@ import type {
 } from "../../types";
 import { ArtifactPreview } from "./ArtifactPreview";
 import { engineLabel } from "./engineLabel";
+import { CAPABILITY_OPTIONS, type TaskCapability } from "./capabilities";
+import "./workspaces-demo.css";
 
-type TaskCapability = "research" | "write" | "visualize" | "present";
 
-const CAPABILITY_OPTIONS: ReadonlyArray<{
-  value: TaskCapability;
-  label: string;
-  adapterSlugs: readonly string[];
-}> = [
-  { value: "research", label: "Research", adapterSlugs: ["deep-research"] },
-  {
-    value: "write",
-    label: "Write",
-    adapterSlugs: [
-      "meeting-grounded-writing",
-      "architecture-doc",
-      "marketing-copy",
-    ],
-  },
-  { value: "visualize", label: "Visualize", adapterSlugs: ["drawio-diagram"] },
-  { value: "present", label: "Present", adapterSlugs: ["slides-deck"] },
-];
+/**
+ * The clock time a task was caught, when it came from a live meeting.
+ * Commitment tasks are written by `approve_commitment_on` as
+ * "Caught live during the meeting at HH:MM from …"; anything else is null.
+ */
+function caughtLiveAt(details: string): string | null {
+  const matched = /^Caught live during the meeting at (\d{1,2}:\d{2})\b/.exec(details);
+  return matched ? matched[1] : null;
+}
+
+const COMPACT_LAYOUT_QUERY = "(max-width: 1120px)";
+
+/** True through 1120px: one column, New task and Context as closed disclosures. */
+function useCompactLayout(): boolean {
+  const [compact, setCompact] = useState(
+    () => window.matchMedia(COMPACT_LAYOUT_QUERY).matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia(COMPACT_LAYOUT_QUERY);
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return compact;
+}
+
+/**
+ * The diagram to show under an awaiting-review Visualize row:
+ * `solutions-architecture.html`, then any `.svg`, then any other `.html`,
+ * filename order as the tie-break. Null when the run produced none.
+ */
+function pickInlinePreviewArtifact(
+  artifacts: WorkspaceArtifact[],
+): WorkspaceArtifact | null {
+  const rank = (artifact: WorkspaceArtifact): number => {
+    const name = artifact.name.toLowerCase();
+    if (name === "solutions-architecture.html") return 0;
+    if (name.endsWith(".svg")) return 1;
+    if (name.endsWith(".html") || name.endsWith(".htm")) return 2;
+    return 3;
+  };
+  const [first] = artifacts
+    .filter((artifact) => rank(artifact) < 3)
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return first ?? null;
+}
 
 const BASELINE_HINTS: Record<TaskCapability, string> = {
   research: "Runs as a Markdown report with sources.",
@@ -248,6 +278,8 @@ export function WorkspaceDetailView({
   const [actionError, setActionError] = useState<string | null>(null);
   const [polledRuns, setPolledRuns] = useState<Record<number, WorkspaceRun>>({});
   const [latestRuns, setLatestRuns] = useState<Record<number, WorkspaceRun>>({});
+  const cachedWorkspaceId = useRef(detail.workspace.id);
+  const compact = useCompactLayout();
   const [expandedArtifacts, setExpandedArtifacts] = useState<Set<number>>(
     () => new Set(),
   );
@@ -503,8 +535,14 @@ export function WorkspaceDetailView({
 
   useEffect(() => {
     let cancelled = false;
-    setLatestRuns({});
-    setExpandedArtifacts(new Set());
+    // Only a different workspace invalidates the run/preview caches; a detail
+    // refresh of the same workspace keeps them so previews don't flash.
+    if (cachedWorkspaceId.current !== detail.workspace.id) {
+      cachedWorkspaceId.current = detail.workspace.id;
+      setLatestRuns({});
+      setPolledRuns({});
+      setExpandedArtifacts(new Set());
+    }
     const taskIds = detail.tasks
       .filter((task) =>
         ["awaiting_review", "done", "failed"].includes(task.status),
@@ -521,7 +559,7 @@ export function WorkspaceDetailView({
         for (const [taskId, run] of entries) {
           if (run) runs[taskId] = run;
         }
-        setLatestRuns(runs);
+        setLatestRuns((current) => ({ ...current, ...runs }));
       })
       .catch((runError: unknown) => {
         if (!cancelled) setActionError(errorMessage(runError));
@@ -921,6 +959,13 @@ export function WorkspaceDetailView({
     const artifacts = run
       ? detail.artifacts.filter((artifact) => artifact.run_id === run.id)
       : [];
+    const inlinePreview =
+      task.capability === "visualize" && task.status === "awaiting_review"
+        ? pickInlinePreviewArtifact(artifacts)
+        : null;
+    const listedArtifacts = inlinePreview
+      ? artifacts.filter((artifact) => artifact.id !== inlinePreview.id)
+      : artifacts;
     const expanded = expandedTaskIds.has(task.id);
     const showingRejectForm = rejectingTaskId === task.id;
     const verdictPending = verdictTaskId === task.id;
@@ -940,7 +985,9 @@ export function WorkspaceDetailView({
     return (
       <div className="ws-task-block" key={task.id}>
         <div
-          className={`ws-task-row${expanded ? " ws-task-row--expanded" : ""}`}
+          className={`ws-task-row${
+            expanded || inlinePreview ? " ws-task-row--expanded" : ""
+          }`}
           role="button"
           tabIndex={0}
           aria-expanded={expanded}
@@ -958,6 +1005,14 @@ export function WorkspaceDetailView({
         >
           <CapabilityBadge capability={task.capability} />
           <span className="ws-task-title">{task.title}</span>
+          {caughtLiveAt(task.details) !== null && (
+            <span
+              className="badge-tag ws-live-chip"
+              title="Caught in a meeting while it was running"
+            >
+              live · {caughtLiveAt(task.details)}
+            </span>
+          )}
           <div className="ws-task-status">
             {isRunning ? (
               <span
@@ -997,6 +1052,7 @@ export function WorkspaceDetailView({
                   }}
                 >
                   <Check size={15} aria-hidden="true" />
+                  <span className="ws-approve-label">Approve</span>
                 </button>
                 <button
                   className="ws-task-action-button ws-task-action-button--reject"
@@ -1084,6 +1140,15 @@ export function WorkspaceDetailView({
           </form>
         )}
 
+        {inlinePreview && (
+          <div
+            className="ws-task-inline-preview"
+            data-testid={`workspace-task-preview-${task.id}`}
+          >
+            <ArtifactPreview artifact={inlinePreview} />
+          </div>
+        )}
+
         {expanded && (
           <div
             className="ws-task-details"
@@ -1092,7 +1157,7 @@ export function WorkspaceDetailView({
             {run?.report.trim() && (
               <p className="ws-task-report">{run.report}</p>
             )}
-            {artifacts.length > 0 && renderArtifactList(artifacts)}
+            {listedArtifacts.length > 0 && renderArtifactList(listedArtifacts)}
             {receipt && <p className="ws-receipt">{receipt}</p>}
             {task.rejection_notes.length > 0 && (
               <ul className="ws-rejections">
@@ -1184,55 +1249,7 @@ export function WorkspaceDetailView({
     );
   };
 
-  return (
-    <div className="ws-detail">
-      <header className="ws-detail-heading">
-        <button
-          className="btn-secondary ws-back"
-          type="button"
-          onClick={onBack}
-        >
-          ← Workspaces
-        </button>
-        <div className="ws-detail-heading-main">
-          <div className="ws-detail-name-row">
-            <h2>{detail.workspace.name}</h2>
-            {awaitingTasks.length > 0 && (
-              <span className="badge-tag ws-review-badge">
-                {awaitingTasks.length} awaiting review
-              </span>
-            )}
-          </div>
-          <p className="ws-knows-line">
-            {countLabel(meetingCount, "meeting")} ·{" "}
-            {countLabel(folderCount, "folder")} ·{" "}
-            {countLabel(attachedSkills.length, "skill")} attached ·{" "}
-            {countLabel(doneTasks.length, "task")} done
-          </p>
-        </div>
-        <button
-          className="btn-secondary ws-settings-button"
-          type="button"
-          aria-expanded={settingsOpen}
-          aria-controls="workspace-project-settings"
-          onClick={() => setSettingsOpen((open) => !open)}
-        >
-          <Settings size={14} aria-hidden="true" />
-          Project settings
-        </button>
-      </header>
-
-      {(actionError || error) && (
-        <p className="ws-error">{actionError || error}</p>
-      )}
-
-      <div className="ws-detail-grid">
-        <div className="ws-detail-column ws-detail-primary">
-          <section
-            className="ws-pane"
-            aria-labelledby="workspace-create-task-title"
-          >
-            <h3 id="workspace-create-task-title">New task</h3>
+  const newTaskForm = (
             <form
               className="ws-addon-form ws-task-create-form"
               onSubmit={(event) => {
@@ -1323,93 +1340,10 @@ export function WorkspaceDetailView({
               Create
             </button>
             </form>
-          </section>
+  );
 
-          <section className="ws-pane" aria-labelledby="workspace-tasks-title">
-            <h3 id="workspace-tasks-title">Tasks</h3>
-            <div className="ws-list">
-              {awaitingTasks.length > 0 && (
-                <>
-                  <h4 className="ws-section-title">
-                    Needs you · {awaitingTasks.length}
-                  </h4>
-                  {awaitingTasks.map(renderTaskRow)}
-                </>
-              )}
-
-              {runningTasks.length > 0 && (
-                <>
-                  <h4 className="ws-section-title">
-                    Running · {runningTasks.length}
-                  </h4>
-                  {runningTasks.map(renderTaskRow)}
-                </>
-              )}
-
-              <h4 className="ws-section-title">
-                Queued · {queuedTasks.length}
-              </h4>
-              {detail.tasks.length === 0 ? (
-                <p className="ws-pane-empty">
-                  No tasks yet. Send one from the to-do board, or add one below.
-                </p>
-              ) : (
-                queuedTasks.map(renderTaskRow)
-              )}
-
-              {doneTasks.length > 0 && (
-                <>
-                  <h4 className="ws-section-title">
-                    Done · {doneTasks.length}
-                  </h4>
-                  {doneTasks.map(renderTaskRow)}
-                </>
-              )}
-            </div>
-          {remainingArtifacts.length > 0 && (
-            <div className="ws-artifacts">
-              <h4>Artifacts</h4>
-              <div className="ws-artifact-list">
-                {remainingArtifacts.map((artifact) => (
-                  <div key={artifact.id}>
-                    <div className="ws-artifact-row">
-                      <FileText size={15} aria-hidden="true" />
-                      <span className="ws-artifact-name">{artifact.name}</span>
-                      <time dateTime={artifact.created_at}>
-                        {new Date(artifact.created_at).toLocaleDateString()}
-                      </time>
-                      <div className="ws-task-actions">
-                        <button
-                          className="ws-artifact-open"
-                          type="button"
-                          onClick={() => void openArtifact(artifact.path)}
-                        >
-                          Open
-                        </button>
-                        <button
-                          className="ws-artifact-open"
-                          type="button"
-                          onClick={() => toggleArtifactPreview(artifact.id)}
-                        >
-                          {expandedArtifacts.has(artifact.id) ? "Hide" : "Preview"}
-                        </button>
-                      </div>
-                    </div>
-                    {expandedArtifacts.has(artifact.id) && (
-                      <ArtifactPreview artifact={artifact} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          </section>
-        </div>
-
-        <aside
-          className="ws-detail-column ws-detail-secondary"
-          aria-label="Project brain"
-        >
+  const projectBrainPanes = (
+    <>
           <section className="ws-pane" aria-labelledby="workspace-grounded-title">
             <h3 id="workspace-grounded-title">Grounded in</h3>
             <div className="ws-grounding-list">
@@ -1731,6 +1665,161 @@ export function WorkspaceDetailView({
             </p>
           </section>
         )}
+    </>
+  );
+
+  return (
+    <div className="ws-detail">
+      <header className="ws-detail-heading">
+        <button
+          className="btn-secondary ws-back"
+          type="button"
+          onClick={onBack}
+        >
+          ← Workspaces
+        </button>
+        <div className="ws-detail-heading-main">
+          <div className="ws-detail-name-row">
+            <h2>{detail.workspace.name}</h2>
+            {awaitingTasks.length > 0 && (
+              <span className="badge-tag ws-review-badge">
+                {awaitingTasks.length} awaiting review
+              </span>
+            )}
+          </div>
+          <p className="ws-knows-line">
+            {countLabel(meetingCount, "meeting")} ·{" "}
+            {countLabel(folderCount, "folder")} ·{" "}
+            {countLabel(attachedSkills.length, "skill")} attached ·{" "}
+            {countLabel(doneTasks.length, "task")} done
+          </p>
+        </div>
+        <button
+          className="btn-secondary ws-settings-button"
+          type="button"
+          aria-expanded={settingsOpen}
+          aria-controls="workspace-project-settings"
+          onClick={() => setSettingsOpen((open) => !open)}
+        >
+          <Settings size={14} aria-hidden="true" />
+          Project settings
+        </button>
+      </header>
+
+      {(actionError || error) && (
+        <p className="ws-error">{actionError || error}</p>
+      )}
+
+      <div className="ws-detail-grid">
+        <div className="ws-detail-column ws-detail-primary">
+          <section className="ws-pane" aria-labelledby="workspace-tasks-title">
+            <h3 id="workspace-tasks-title">Tasks</h3>
+            <div className="ws-list">
+              {awaitingTasks.length > 0 && (
+                <>
+                  <h4 className="ws-section-title">
+                    Needs you · {awaitingTasks.length}
+                  </h4>
+                  {awaitingTasks.map(renderTaskRow)}
+                </>
+              )}
+
+              {runningTasks.length > 0 && (
+                <>
+                  <h4 className="ws-section-title">
+                    Running · {runningTasks.length}
+                  </h4>
+                  {runningTasks.map(renderTaskRow)}
+                </>
+              )}
+
+              <h4 className="ws-section-title">
+                Queued · {queuedTasks.length}
+              </h4>
+              {detail.tasks.length === 0 ? (
+                <p className="ws-pane-empty">
+                  No tasks yet. Send one from the to-do board, or add one below.
+                </p>
+              ) : (
+                queuedTasks.map(renderTaskRow)
+              )}
+
+              {doneTasks.length > 0 && (
+                <>
+                  <h4 className="ws-section-title">
+                    Done · {doneTasks.length}
+                  </h4>
+                  {doneTasks.map(renderTaskRow)}
+                </>
+              )}
+            </div>
+          {remainingArtifacts.length > 0 && (
+            <div className="ws-artifacts">
+              <h4>Artifacts</h4>
+              <div className="ws-artifact-list">
+                {remainingArtifacts.map((artifact) => (
+                  <div key={artifact.id}>
+                    <div className="ws-artifact-row">
+                      <FileText size={15} aria-hidden="true" />
+                      <span className="ws-artifact-name">{artifact.name}</span>
+                      <time dateTime={artifact.created_at}>
+                        {new Date(artifact.created_at).toLocaleDateString()}
+                      </time>
+                      <div className="ws-task-actions">
+                        <button
+                          className="ws-artifact-open"
+                          type="button"
+                          onClick={() => void openArtifact(artifact.path)}
+                        >
+                          Open
+                        </button>
+                        <button
+                          className="ws-artifact-open"
+                          type="button"
+                          onClick={() => toggleArtifactPreview(artifact.id)}
+                        >
+                          {expandedArtifacts.has(artifact.id) ? "Hide" : "Preview"}
+                        </button>
+                      </div>
+                    </div>
+                    {expandedArtifacts.has(artifact.id) && (
+                      <ArtifactPreview artifact={artifact} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          </section>
+
+          {compact ? (
+            <details className="ws-pane ws-disclosure">
+              <summary>New task</summary>
+              {newTaskForm}
+            </details>
+          ) : (
+            <section
+              className="ws-pane"
+              aria-labelledby="workspace-create-task-title"
+            >
+              <h3 id="workspace-create-task-title">New task</h3>
+              {newTaskForm}
+            </section>
+          )}
+        </div>
+
+        <aside
+          className="ws-detail-column ws-detail-secondary"
+          aria-label="Project brain"
+        >
+          {compact ? (
+            <details className="ws-pane ws-disclosure">
+              <summary>Context</summary>
+              <div className="ws-detail-column">{projectBrainPanes}</div>
+            </details>
+          ) : (
+            projectBrainPanes
+          )}
         </aside>
       </div>
     </div>

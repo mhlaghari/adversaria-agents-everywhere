@@ -94,7 +94,7 @@ describe("RecordingCompanion readiness_session_scoped", () => {
     // need to open Copilot tab to see folder line (balanced right panel also shows it, but we open copilot for determinism)
     await user.click(screen.getByRole("tab", { name: /Copilot/ }));
     // before any event, getter is pending -> indexing…
-    expect(await screen.findByText("Folder: Interviews \u00b7 indexing\u2026")).toBeInTheDocument();
+    expect(await screen.findByText("Interviews \u00b7 reading your files\u2026")).toBeInTheDocument();
 
     // emit ready for that session
     const ready: Readiness = {
@@ -108,7 +108,7 @@ describe("RecordingCompanion readiness_session_scoped", () => {
       error: null,
     };
     eventHandler?.({ payload: ready });
-    await waitFor(() => expect(screen.getByText("Folder: Interviews \u00b7 33 sources indexed \u00b7 pack 2 projects")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Interviews \u00b7 ready \u00b7 33 sources")).toBeInTheDocument());
 
     // emit for different session id – should not change
     const stale: Readiness = {
@@ -123,8 +123,8 @@ describe("RecordingCompanion readiness_session_scoped", () => {
     };
     eventHandler?.({ payload: stale });
     // still shows previous ready, not stale
-    await waitFor(() => expect(screen.getByText("Folder: Interviews \u00b7 33 sources indexed \u00b7 pack 2 projects")).toBeInTheDocument());
-    expect(screen.queryByText("Folder: Interviews \u00b7 99 sources indexed \u00b7 pack 9 projects")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Interviews \u00b7 ready \u00b7 33 sources")).toBeInTheDocument());
+    expect(screen.queryByText("Interviews \u00b7 ready \u00b7 99 sources")).not.toBeInTheDocument();
 
     // emit error for original session
     const errPayload: Readiness = {
@@ -138,7 +138,7 @@ describe("RecordingCompanion readiness_session_scoped", () => {
       error: "walk failed",
     };
     eventHandler?.({ payload: errPayload });
-    await waitFor(() => expect(screen.getByText("Folder: Interviews \u00b7 indexing failed: walk failed")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Interviews \u00b7 could not read your files: walk failed")).toBeInTheDocument());
 
     // finally assert getter resolves before any event: new component with getter returning ready immediately
     const getterReady: Readiness = {
@@ -160,7 +160,7 @@ describe("RecordingCompanion readiness_session_scoped", () => {
     });
     rerender(<RecordingCompanion {...defaultProps} copilotSessionId="sess-getter" />);
     // still need Copilot tab selected (already is), wait for getter to populate
-    await waitFor(() => expect(screen.getByText("Folder: Interviews \u00b7 12 sources indexed \u00b7 pack 1 projects")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Interviews \u00b7 ready \u00b7 12 sources")).toBeInTheDocument());
     // ensure getter was called with correct session id
     expect(tauriMocks.copilotFolderReadiness).toHaveBeenCalledWith("sess-getter");
     // event handler should exist but not needed for this assertion

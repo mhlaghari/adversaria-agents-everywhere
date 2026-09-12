@@ -17,13 +17,13 @@ use crate::calendar::{oauth, tokens};
 use crate::http_client::{HttpClient, SummarizeParams, TranscribeParams};
 use crate::types::{
     ActionItem, AppConfig, AskMessage, AskResponse, AttachmentDraft, CalendarAccount,
-    CalendarConfig, CalendarEvent, ChatMessage, ChatTurn, ContextIndexStatus, ContextSources,
-    CopilotCommandAck, CopilotLiveContext, Folder, FolderCopilotBrief, FolderOverview,
-    FolderSuggestion, FolderSummary, HealthResponse, Meeting, MeetingAttachment, MeetingFolder,
-    MeetingRef, MeetingWorkspaceBinding, ProjectOverview, RelatedMeetingRef, SummarizeResponse,
-    Tag, TaskGroundingPreview, TaskStaffing, TemplateInfo, WeeklyBriefing, WeeklyOpenLoop,
-    Workspace, WorkspaceAddon, WorkspaceContextItem, WorkspaceDetail, WorkspaceEngine,
-    WorkspaceRun, WorkspaceSuggestion, WorkspaceSummary, WorkspaceTask,
+    CalendarConfig, CalendarEvent, ChatMessage, ChatTurn, CommitmentResult, ContextIndexStatus,
+    ContextSources, CopilotCommandAck, CopilotLiveContext, Folder, FolderCopilotBrief,
+    FolderOverview, FolderSuggestion, FolderSummary, HealthResponse, Meeting, MeetingAttachment,
+    MeetingFolder, MeetingRef, MeetingWorkspaceBinding, ProjectOverview, RelatedMeetingRef,
+    SummarizeResponse, Tag, TaskGroundingPreview, TaskStaffing, TemplateInfo, WeeklyBriefing,
+    WeeklyOpenLoop, Workspace, WorkspaceAddon, WorkspaceContextItem, WorkspaceDetail,
+    WorkspaceEngine, WorkspaceRun, WorkspaceSuggestion, WorkspaceSummary, WorkspaceTask,
 };
 
 /// Poll cadence for the live-caption feed, in milliseconds. 500 ms: the
@@ -6622,6 +6622,51 @@ pub async fn create_workspace_task(
     Ok(task)
 }
 
+/// Approve a live caption commitment and make it available to the workspace runner.
+#[tauri::command]
+pub async fn commitment_approve(
+    app: AppHandle,
+    session_id: String,
+    id: u64,
+    capability: Option<String>,
+) -> Result<CommitmentResult, String> {
+    let agents_paused = crate::config::load_config().agents_paused;
+    let result = {
+        let state = app.state::<AppState>();
+        let mut copilot = state.copilot.lock().unwrap();
+        let conn = crate::storage::connect_for_sync().map_err(|error| error.to_string())?;
+        let (result, event) = crate::copilot_session::approve_commitment_on(
+            &conn,
+            &mut copilot,
+            &session_id,
+            id,
+            capability.as_deref(),
+            agents_paused,
+        )?;
+        let _ = app.emit("copilot-commitment", &event);
+        result
+    };
+    let _ = app.emit(
+        "workspace-task-changed",
+        serde_json::json!({ "workspace_id": result.task.workspace_id, "task_id": result.task.id }),
+    );
+    if result.run_queued {
+        crate::autopilot::kick(app);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn commitment_dismiss(app: AppHandle, session_id: String, id: u64) -> Result<(), String> {
+    let agents_paused = crate::config::load_config().agents_paused;
+    let state = app.state::<AppState>();
+    let mut copilot = state.copilot.lock().unwrap();
+    let event =
+        crate::copilot_session::dismiss_commitment(&mut copilot, &session_id, id, agents_paused)?;
+    let _ = app.emit("copilot-commitment", &event);
+    Ok(())
+}
+
 /// Return the run setup resolved for one workspace task.
 #[tauri::command]
 pub async fn get_workspace_task_staffing(task_id: i64) -> Result<Option<TaskStaffing>, String> {
@@ -6696,6 +6741,32 @@ pub async fn pick_workspace_folder() -> Result<Option<String>, String> {
 }
 
 const LOCAL_WORKSPACE_INSTRUCTION: &str = "Write the deliverable this task asks for as one complete, well-structured Markdown document. Use only the context in the brief. Where the brief does not contain something you need, say so under a final 'Open questions' heading instead of inventing it. Output only the document. To produce a separate file (a diagram, a deck, data), start a line with \"=== FILE: <name.ext> ===\" and put that file's complete content on the following lines, without a code fence; everything outside such blocks becomes draft.md.";
+
+/// Local models cannot render draw.io, so a local "visualize" run asks for one
+/// HTML file wrapping one standalone SVG the app can show; the general Markdown
+/// wording above does not apply to that case.
+const LOCAL_VISUALIZE_INSTRUCTION: &str = "Output exactly one file block and nothing else. Start a line with \"=== FILE: solutions-architecture.html ===\" and put one complete HTML document on the following lines, without a code fence. The document must contain ONE standalone <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 960 360\"> diagram of the software system named in the task title. The system and its components are described in the brief's context; use the component names the context uses and nothing the context does not mention. The task's subject is a product name, not a generic word: do not reinterpret it. Layout rules, all mandatory: a title text at the top (x=480, y=32, text-anchor middle, font-size 20); at most six nodes drawn as rounded rectangles (rx=10) of width 200 and height 64 placed on a grid with x in {40, 380, 720} and y in {80, 200}, so nodes never overlap; one line of label text per node, at most 24 characters, centred inside its rectangle; straight arrows between node edges using a marker-end triangle, never crossing a node; a legend of at most three items in the bottom-left corner (x=40, y=300 to 340) inside the viewBox. Presentation attributes only: no CSS classes, no <style>, no external assets, no scripts. Everything must fit inside the 960 by 360 viewBox. Do not produce any additional files.";
+
+fn local_deliverable_instruction(capability: &str) -> &'static str {
+    if capability == "visualize" {
+        LOCAL_VISUALIZE_INSTRUCTION
+    } else {
+        LOCAL_WORKSPACE_INSTRUCTION
+    }
+}
+
+/// The draw.io adapter contradicts the local SVG contract, so a local
+/// "visualize" run drops it; every other engine/capability keeps its staffing.
+fn run_skills(engine: &str, capability: &str, skills: Vec<WorkspaceAddon>) -> Vec<WorkspaceAddon> {
+    if engine == "local" && capability == "visualize" {
+        skills
+            .into_iter()
+            .filter(|skill| skill.slug != "drawio-diagram")
+            .collect()
+    } else {
+        skills
+    }
+}
 
 fn workspace_run_by_id(run_id: i64) -> Result<WorkspaceRun, String> {
     crate::storage::get_workspace_run(run_id)
@@ -7023,11 +7094,15 @@ async fn execute_workspace_run_inner(
     let selected_agent = staffing
         .agent_id
         .and_then(|agent_id| catalog.iter().find(|addon| addon.id == agent_id).cloned());
-    let skills = staffing
-        .skill_ids
-        .iter()
-        .filter_map(|skill_id| catalog.iter().find(|addon| addon.id == *skill_id).cloned())
-        .collect::<Vec<_>>();
+    let skills = run_skills(
+        &engine,
+        &task.capability,
+        staffing
+            .skill_ids
+            .iter()
+            .filter_map(|skill_id| catalog.iter().find(|addon| addon.id == *skill_id).cloned())
+            .collect::<Vec<_>>(),
+    );
     let agent = selected_agent.as_ref();
     let local_model = if engine == "local" {
         if workspace.model.is_empty() {
@@ -7166,7 +7241,7 @@ async fn execute_workspace_run_inner(
             .client
             .draft_stream(
                 &brief,
-                LOCAL_WORKSPACE_INSTRUCTION,
+                local_deliverable_instruction(&task.capability),
                 model,
                 llm_base_url.as_deref(),
                 llm_api_key.as_deref(),
@@ -8244,6 +8319,74 @@ mod tests {
         .unwrap();
 
         assert!(!overwritten.get());
+    }
+
+    fn skill_addon(id: i64, slug: &str) -> WorkspaceAddon {
+        WorkspaceAddon {
+            id,
+            kind: "skill".to_string(),
+            slug: slug.to_string(),
+            name: slug.to_string(),
+            description: String::new(),
+            instructions: String::new(),
+            builtin: true,
+            created_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn local_visualize_instruction_asks_for_one_html_svg_file_not_drawio() {
+        let instruction = local_deliverable_instruction("visualize");
+        assert!(instruction.contains("=== FILE: solutions-architecture.html ==="));
+        assert!(instruction.contains("viewBox=\"0 0 960 360\""));
+        assert!(instruction.contains("at most six nodes"));
+        let lower = instruction.to_lowercase();
+        assert!(!lower.contains("draw.io"));
+        assert!(!lower.contains("drawio"));
+        assert!(!lower.contains("markdown"));
+    }
+
+    #[test]
+    fn local_write_instruction_is_the_general_markdown_one() {
+        assert_eq!(
+            local_deliverable_instruction("write"),
+            LOCAL_WORKSPACE_INSTRUCTION
+        );
+        assert!(local_deliverable_instruction("write")
+            .contains("one complete, well-structured Markdown document"));
+        assert_eq!(
+            local_deliverable_instruction("research"),
+            LOCAL_WORKSPACE_INSTRUCTION
+        );
+        assert_eq!(
+            local_deliverable_instruction("present"),
+            LOCAL_WORKSPACE_INSTRUCTION
+        );
+    }
+
+    #[test]
+    fn local_visualize_drops_the_drawio_skill_while_claude_keeps_it() {
+        let staffed = || {
+            vec![
+                skill_addon(1, "drawio-diagram"),
+                skill_addon(2, "deep-research"),
+            ]
+        };
+
+        let local = run_skills("local", "visualize", staffed());
+        assert_eq!(
+            local.iter().map(|s| s.slug.as_str()).collect::<Vec<_>>(),
+            vec!["deep-research"]
+        );
+
+        let claude = run_skills("claude", "visualize", staffed());
+        assert_eq!(
+            claude.iter().map(|s| s.slug.as_str()).collect::<Vec<_>>(),
+            vec!["drawio-diagram", "deep-research"]
+        );
+
+        let local_write = run_skills("local", "write", staffed());
+        assert_eq!(local_write.len(), 2);
     }
 
     #[test]

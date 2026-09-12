@@ -1205,6 +1205,16 @@ export function revealWorkspaceArtifact(path: string): Promise<void> {
   return invoke("reveal_workspace_artifact", { path });
 }
 
+// ---- Commitments (live workspace tasks) ----
+
+export function commitmentApprove(sessionId: string, id: number, capability?: string): Promise<import("../types").CommitmentResult> {
+  return invoke("commitment_approve", { sessionId, id, capability: capability ?? null });
+}
+
+export function commitmentDismiss(sessionId: string, id: number): Promise<void> {
+  return invoke("commitment_dismiss", { sessionId, id });
+}
+
 // ---- Live copilot (Slice B) ----
 
 export function copilotSetLiveContext(

@@ -898,6 +898,28 @@ export interface CopilotPassage {
   score: number;
 }
 
+export interface Commitment {
+  session_id: string;
+  id: number;
+  text: string;
+  owner: string | null;
+  deadline: string | null;
+  source: "Me" | "Them";
+  at_ms: number;
+  state: "caught" | "approved" | "dismissed";
+  /** Task type inferred from the spoken words; the user may change it before approving. */
+  capability: string;
+  task_id: number | null;
+  run_queued: boolean;
+  agents_paused: boolean;
+}
+
+export interface CommitmentResult {
+  task: WorkspaceTask;
+  run_queued: boolean;
+  agents_paused: boolean;
+}
+
 export interface CopilotCard {
   id: number;
   session_id: string;

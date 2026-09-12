@@ -1055,6 +1055,40 @@ pub struct WorkspaceAddon {
     pub created_at: String,
 }
 
+/// A caption-only commitment held in memory until the user approves it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Commitment {
+    pub id: u64,
+    pub text: String,
+    pub owner: Option<String>,
+    pub deadline: Option<String>,
+    pub source: String,
+    /// Milliseconds since the recording's Copilot session began.
+    pub at_ms: u64,
+    /// "caught" | "approved" | "dismissed"
+    pub state: String,
+    /// Inferred task capability: "research" | "write" | "visualize" | "present".
+    /// The user may override it when approving.
+    pub capability: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitmentEvent {
+    pub session_id: String,
+    #[serde(flatten)]
+    pub commitment: Commitment,
+    pub task_id: Option<i64>,
+    pub run_queued: bool,
+    pub agents_paused: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitmentResult {
+    pub task: WorkspaceTask,
+    pub run_queued: bool,
+    pub agents_paused: bool,
+}
+
 /// A queued unit of work inside a workspace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceTask {
