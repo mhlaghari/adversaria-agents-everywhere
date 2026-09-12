@@ -1,3 +1,9 @@
+# STATUS (hackathon repo)
+
+> **2026-09-12 12:20 GST — 🟠 Hackathon slice "commitments caught live become workspace tasks": frontend DONE (425 tests, 498.08 kB), Rust IN PROGRESS (background Codex worker, see HANDOFF top block), Astra check in progress. Repo: 2 commits of disclosed prior work; today's work uncommitted in the tree. Next: Rust gate → commit 3 → HACKATHON.md → demo → submit by 15:30.**
+
+---
+
 # STATUS
 
 _The board — a **living doc**. Where the project stands right now; refresh it
