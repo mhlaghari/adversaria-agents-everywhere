@@ -1,0 +1,3 @@
+Them: How does Adversaria turn a spoken commitment into completed work?
+Me: I will create a solutions architecture diagram for Adversaria by Monday.
+Me: I will check the latest voice agent tooling before Friday.

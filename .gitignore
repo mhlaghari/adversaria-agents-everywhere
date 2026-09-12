@@ -16,6 +16,10 @@ src-tauri/target/
 Thumbs.db
 
 # Python
+cli/.venv/
+cli/**/__pycache__/
+cli/.pytest_cache/
+cli/.ruff_cache/
 *.egg-info/
 python-service/__pycache__/
 python-service/.venv/
@@ -50,6 +54,8 @@ AGENTS.md
 .playwright-mcp/
 
 # Dev/scratch artifacts
+.hackathon/start-*.log
+.hackathon/astra-layouts.log
 tauri_dev.log
 tauri_dev.err.log
 logs/

@@ -1,0 +1,25 @@
+Them: Thanks for joining the design review, Hamza. Let's start with the orchestration layer.
+Me: Sure. The plan is to keep the orchestrator thin and push the logic into individual agents.
+Them: Before we go further, what is the difference between a workflow and an agent?
+Me: A workflow is a fixed sequence of steps we define ahead of time; an agent decides its own steps at runtime.
+Them: So the workflow is deterministic and the agent is adaptive. That makes sense.
+Me: Right, and we mix them: the workflow schedules, the agents do the open-ended work.
+Them: Wael asked for something visual for the steering committee next week.
+Me: I will create a solutions architecture diagram for Wael by Monday.
+Them: Great, keep it to one page if you can.
+Me: One page, three layers, with the data boundary clearly marked.
+Them: The other open item is the SIDRA intersection model. The thresholds looked off in the last run.
+Me: Which thresholds specifically?
+Them: The saturation flow and the critical gap values. Wael thinks they were copied from the old manual.
+Me: I will check the SIDRA thresholds against the manual for Wael before Friday.
+Them: Perfect. Anything on the audio capture side?
+Me: Dual-channel capture is stable now on both platforms; the process tap replaced ScreenCaptureKit on macOS.
+Them: And transcription is still fully local?
+Me: Yes, Whisper runs on-device and the notes come from a local model through Ollama.
+Them: Good. Privacy is the product, so let's keep that line firm.
+Me: Agreed. Nothing is uploaded unless the user explicitly opts in for that run.
+Them: Let's also make sure the SQLite schema handles workspace attachments.
+Me: It does; attachments are stored per workspace and surfaced to the agents as context.
+Them: Okay, I think we're done. Summary: diagram by Monday, thresholds by Friday.
+Me: Confirmed on both.
+Them: Thanks everyone, see you next week.

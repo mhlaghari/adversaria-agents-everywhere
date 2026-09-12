@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ADVERSARIA_REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if ! command -v uv >/dev/null 2>&1; then
+  printf 'Install uv first: https://docs.astral.sh/uv/getting-started/installation/\n' >&2
+  exit 1
+fi
+exec uv run --project "$ADVERSARIA_REPO/cli" adversaria "$@"
