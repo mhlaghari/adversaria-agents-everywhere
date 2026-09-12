@@ -155,6 +155,11 @@ simulated speech; they do not establish real microphone or provider latency.
 > Labs product). The on-disk data dir is still `meeting-note-taker`, so existing
 > meetings carry over unchanged.
 
+![Adversaria desktop interface showing meeting history, structured notes, and transcript tabs](marketing/product-demo/assets/real-note.png)
+
+*Desktop meeting-note view from the existing Adversaria app. Today's Copilot and
+Workspaces additions are described below.*
+
 A privacy-first, bot-free AI meeting notetaker for **Windows and macOS** (Apple
 Silicon), inspired by Granola. It records your system audio **and your microphone**
 during a meeting (no bot joins the call), transcribes it locally with your pick
