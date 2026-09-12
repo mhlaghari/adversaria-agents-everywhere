@@ -1,7 +1,7 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
-> **CURRENT — 2026-09-12 15:49 GST: the founder requested an actual slide update.
-> One-slide presentation created; README links now select it by default.**
+> **CURRENT — 2026-09-12 15:50 GST: one-slide presentation delivered and pushed
+> to `origin/main` as `71a6d7a`; README links select it by default.**
 
 - [One-slide PDF](marketing/adversaria-story/output/adversaria-one-slide.pdf),
   [editable PowerPoint](marketing/adversaria-story/output/adversaria-one-slide.pptx),
@@ -10,6 +10,9 @@
   Copy: "Every meeting adds hours of follow-up while my own projects wait."
   Large Silkscreen type, cream, fire red, yellow highlight and hard black frame
   follow the supplied Laghari Labs reference. Detail moved into speaker notes.
+- Delivered the slide preview directly in chat with PDF and editable PowerPoint
+  links. Presentation source, all four formats, notes and documentation are in
+  `71a6d7a`. No further slide edits are pending from this request.
 - Story-review agent tightened the sentence. PowerPoint package/layout/import
   checks passed for exactly one slide; final PPTX and PDF were rendered and
   visually checked. HTML has no text overflow and its notes shortcut works.
@@ -33,6 +36,9 @@
   task controls, draft review/revision and associated tests. Store revision
   feedback requeues eligible tasks. These changes remain uncommitted and are
   still evolving in the shared working tree as of this checkpoint.
+  Associated pending CLI documentation, provider-check notes and
+  `cli/assets/terminal-workspace.svg` also remain with that work. Only the
+  presentation-link hunk of the shared root README was included in `71a6d7a`.
   They are outside this documentation checkpoint and have not been verified here;
   coordinate with its owning worker before staging. Earlier test counts describe
   the committed CLI, not these pending changes.
