@@ -1,6 +1,6 @@
 # HANDOFF (hackathon repo: adversaria-agents-everywhere)
 
-> **CURRENT — 2026-09-12 15:42 GST: README screenshot and Codex/sponsor credits
+> **CURRENT — 2026-09-12 15:43 GST: README screenshot and Codex/sponsor credits
 > committed and pushed to `origin/main`; presentation simplification is still a proposal.**
 
 - README now shows the existing desktop meeting-note screenshot from
@@ -12,11 +12,17 @@
 - The founder is brainstorming a single pain-point slide. Suggested sentence:
   "Every meeting leaves me with hours of follow-up, while my own projects wait."
   No slide files changed; the reviewed eight-slide deck remains available as backup.
+  This was reiterated when the founder asked what the new slides were; the
+  one-slide version has not been built.
 - Next: settle the presentation format and rehearse the live demo. The founder's
   latest stated deadline is **16:30 GST**, superseding the earlier timing below.
 - Separate working-tree work is present in `cli/adversaria_cli/dashboard.py`,
-  `cli/adversaria_cli/store.py` and new `cli/adversaria_cli/workspace_dashboard.py`.
-  It is outside this documentation checkpoint and has not been verified here;
+  `cli/adversaria_cli/store.py`, `cli/tests/test_dashboard.py` and new
+  `cli/adversaria_cli/workspace_dashboard.py`. The dashboard now imports the new
+  workspace mixin; the pending diff adds workspace/task navigation, background
+  task controls, draft review/revision and associated tests. Store revision
+  feedback requeues eligible tasks. These changes remain uncommitted.
+  They are outside this documentation checkpoint and have not been verified here;
   coordinate with its owning worker before staging. Earlier test counts describe
   the committed CLI, not these pending changes.
 

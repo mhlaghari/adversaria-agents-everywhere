@@ -1,6 +1,7 @@
 # STATUS (hackathon repo)
 
-> **Current — 2026-09-12 15:42 GST: README updates pushed through `d76292e`.
+> **Current — 2026-09-12 15:43 GST: README updates pushed through `d76292e`;
+> previous memory refresh pushed as `cbfc46f`. No new slide version created.
 > Latest founder deadline: 16:30 GST.**
 
 | Work | Status | Evidence / next step |
@@ -10,7 +11,7 @@
 | Automatic Exa and AI Tinkerers answer fix | Pushed and installed | `3b4df85`; 75 CLI tests and live synthetic/public regression checks passed |
 | One-sentence pain-point slide | Brainstorming | Suggested: "Every meeting leaves me with hours of follow-up, while my own projects wait." No deck edits made |
 | Existing Laghari Labs presentation | Ready | Eight reviewed slides; PowerPoint, PDF, offline HTML and notes |
-| Separate CLI workspace dashboard changes | In progress; unverified here | Working-tree edits to `dashboard.py`, `store.py`, and new `workspace_dashboard.py`; coordinate with owning worker |
+| Separate CLI workspace dashboard changes | In progress; uncommitted and unverified here | Dashboard imports workspace/task navigation and background review controls; store revision method and dashboard tests added. Coordinate with owning worker, then verify before publishing |
 | Demo rehearsal and submission | Next | Rehearse against the latest stated 16:30 GST deadline; a repo push does not submit the entry |
 
 > **Chat fix checkpoint — 2026-09-12 15:32 GST: automatic Exa lookup enabled at the owner's
